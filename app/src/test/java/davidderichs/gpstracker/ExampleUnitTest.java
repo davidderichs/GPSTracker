@@ -1,4 +1,4 @@
-package davidderichs.gpsreceiver;
+package davidderichs.gpstracker;
 
 import org.junit.Test;
 

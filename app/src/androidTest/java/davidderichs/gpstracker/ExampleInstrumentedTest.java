@@ -1,4 +1,4 @@
-package davidderichs.gpsreceiver;
+package davidderichs.gpstracker;
 
 import android.content.Context;
 import android.support.test.InstrumentationRegistry;

@@ -1,4 +1,4 @@
-package davidderichs.gpsreceiver;
+package davidderichs.gpstracker;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
@@ -24,7 +24,6 @@ import android.widget.TextView;
 import com.ramotion.fluidslider.FluidSlider;
 
 import kotlin.Unit;
-import kotlin.jvm.functions.Function0;
 
 import static android.hardware.SensorManager.SENSOR_DELAY_NORMAL;
 
