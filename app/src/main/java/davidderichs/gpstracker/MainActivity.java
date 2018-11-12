@@ -11,6 +11,7 @@ import android.hardware.SensorManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.support.design.widget.BottomNavigationView;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -35,6 +36,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     TextView textView_recalibrated_height;
     TextView textView_speed;
     CheckBox checkbox_useNegativeCalibration;
+    BottomNavigationView navigation_bottomNavigation;
 
     boolean permissionsGranted;
 
@@ -59,6 +61,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         showPhoneStatePermissionGPS();
 
         manual_CalibratedHeight = 0;
+
+
+        navigation_bottomNavigation = (BottomNavigationView)findViewById(R.id.bottom_navigation);
+        navigation_bottomNavigation.inflateMenu(R.menu.bottom_menu);
 
         button_SwitchToGPS = (Button) findViewById(R.id.getGPS);
         button_SwitchToGPS.setOnClickListener(this);

@@ -2,7 +2,18 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <color name="colorPrimary">#008577</color>
     <color name="colorPrimaryDark">#00574B</color>
-    <color name="colorAccent">#D81B60</color>
+    <color name="colorAccent">#96c0a7</color>
+    <color name="colorPrimaryLight">#4aaaa0</color>
+
     <color name="red" tools:ignore="MissingDefaultResource">#c52c55</color>
     <color name="white">#ffffff</color>
+    <color name="navigation_background_black">#3b3939</color>
+    <color name="navigation_icon_tint">#c3c1c1</color>
+    <color name="navigation_text_color">#ffffff</color>
+
+    <color name="colorWhite">#ffffff</color>
+    <color name="colorBlack">#000000</color>
+    <color name="colorDivider">#2FE897</color>
+    <color name="colorBorder">#a7a4a4</color>
+    <color name="colorExtra">#fffac1</color>
 </resources>
