@@ -214,7 +214,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     @Override
     public void onLocationChanged(Location location) {
-        longitude.setText("longitude: " + Double.toString(Math.round(location.getLongitude())));
+        longitude.setText("longitude: " + Double.toString(location.getLongitude()));
         latitude.setText("latitude: " + Double.toString(location.getLatitude()));
         textView_speed.setText("Speed: " + location.getSpeed());
     }
