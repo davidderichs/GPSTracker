@@ -9,16 +9,15 @@
         android:title="@string/action_info"
         app:showAsAction="ifRoom"></item>
     <item
-        android:id="@+id/action_manage"
+        android:id="@+id/action_settings"
         android:enabled="true"
         android:icon="@android:drawable/ic_menu_manage"
-        android:title="@string/action_manage"
+        android:title="@string/action_settings"
         app:showAsAction="ifRoom"></item>
     <item
-        android:id="@+id/action_features"
+        android:id="@+id/action_calibrate"
         android:enabled="true"
         android:icon="@android:drawable/ic_dialog_dialer"
-        android:title="@string/action_whatever"
+        android:title="@string/action_calibrate"
         app:showAsAction="ifRoom"></item>
-
 </menu>

@@ -13,43 +13,13 @@
         android:padding="0px">
 
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:padding="25px">
-
-            <Button
-                android:id="@+id/getGPS"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginRight="10px"
-                android:background="@android:color/holo_green_light"
-                android:minWidth="350px"
-                android:shadowColor="@color/white"
-                android:text="GPS"
-                android:textColor="@color/white"
-                android:textSize="24sp" />
-
-            <Button
-                android:id="@+id/getPressure"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginRight="10px"
-                android:background="@android:color/holo_green_light"
-                android:minWidth="350px"
-                android:shadowColor="@color/white"
-                android:text="Height"
-                android:textColor="@color/white"
-                android:textSize="24sp" />
-        </LinearLayout>
-
-        <LinearLayout
+            android:id="@+id/linearLayout_standard_content"
             android:layout_width="match_parent"
-            android:layout_height="434dp"
+            android:layout_height="match_parent"
             android:layout_gravity="center"
             android:gravity="center"
-            android:orientation="vertical">
-
+            android:orientation="vertical"
+            android:visibility="visible">
 
             <TextView
                 android:id="@+id/speed"
@@ -74,6 +44,14 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textSize="24sp"></TextView>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/linearLayout_Calibration"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
 
             <TextView
                 android:id="@+id/recalibrated_height"
@@ -81,28 +59,52 @@
                 android:layout_height="wrap_content"
                 android:textSize="24sp"></TextView>
 
-
             <com.ramotion.fluidslider.FluidSlider
                 android:id="@+id/setCalibratedHeight"
-                app:bar_color="@android:color/holo_green_light"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="bottom" />
+                android:layout_gravity="bottom"
+                app:bar_color="@android:color/holo_green_light" />
 
-            <CheckBox
-                android:id="@+id/checkbox_useNegativeCalibration"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:checked="false"
-                android:text="Calibrate downwards" />
         </LinearLayout>
 
+        <LinearLayout
+            android:id="@+id/linearLayout_Settings"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginBottom="50dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <Button
+                android:id="@+id/getGPS"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@android:color/holo_green_light"
+                android:minWidth="350px"
+                android:shadowColor="@color/white"
+                android:text="GPS"
+                android:textColor="@color/white"
+                android:textSize="24sp" />
+
+            <Button
+                android:id="@+id/getPressure"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@android:color/holo_green_light"
+                android:minWidth="350px"
+                android:shadowColor="@color/white"
+                android:text="Height"
+                android:textColor="@color/white"
+                android:textSize="24sp" />
+        </LinearLayout>
     </LinearLayout>
+
+
 
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
-
         <android.support.design.widget.BottomNavigationView
             android:id="@+id/bottom_navigation"
             android:layout_width="match_parent"
