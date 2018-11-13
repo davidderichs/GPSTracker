@@ -2,6 +2,7 @@ package davidderichs.gpstracker;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.ClipData;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.hardware.Sensor;
@@ -65,6 +66,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         navigation_bottomNavigation = (BottomNavigationView)findViewById(R.id.bottom_navigation);
         navigation_bottomNavigation.inflateMenu(R.menu.bottom_menu);
+        navigation_bottomNavigation.setOnClickListener(this);
 
         button_SwitchToGPS = (Button) findViewById(R.id.getGPS);
         button_SwitchToGPS.setOnClickListener(this);
@@ -82,6 +84,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         textView_speed = (TextView) findViewById(R.id.speed);
 
         setupManualHeightSlider();
+        getGPSData();
+        getHeightViaPressure();
 
     }
 
@@ -190,7 +194,15 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             case R.id.checkbox_useNegativeCalibration:
                 Log.d("GPSReceiver", "Use Negative Calibration");
                 toggleCalibrationType();
+            case R.id.bottom_navigation:
+                Log.d("GPSReceiver", "Menu clicked");
+                menuClicked(v);
         }
+    }
+
+    private void menuClicked(View v){
+        int id = v.getId();
+        Log.d("GPSReceiver", "clicked view id: " + id);
     }
 
 
