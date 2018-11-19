@@ -1,0 +1,1966 @@
+// -------------------------------------------------------------------------- //
+// Javascript-Funktionen und -code für die Berechnungen der Koordinaten-Tools //
+// -------------------------------------------------------------------------- //
+
+// Zeitgleichung: http://lexikon.astronomie.info/zeitgleichung/
+
+// Konstanten für das verwendete Ellipsoid (fuer WGS84):
+const ha_1 = 6378137.0; //grosse Halbachse = Ellipsoid_Equatorialradius
+const ha_2 = 6356752.314; //kleine Halbachse
+const UTMScaleFactor = 0.9996;
+const RAD = Math.PI / 180.0;
+const h = -( (5.0 / 6.0) * Math.PI / 180.0); // Höhe des Sonnenmittelpunkts bei Aufgang: Radius+Refraktion
+
+
+//-----------------------------------------------------------------
+// Allgemeine Routinen fuer Umrechnungen
+//-----------------------------------------------------------------
+
+// Umwandlung Grad => Bogenmaß
+function deg2rad(d) {
+  //return (Math.PI * d / 180.0);
+  return d * RAD;
+} //deg2rad
+
+// Umwandlung Bogenmaß => Grad
+function rad2deg(r) {
+  //return (180.0 * r / Math.PI);
+  return r / RAD;
+} //rad2deg
+
+// Implementierung der Funktion "Quadrat" (return = x^2)
+function sqr(x) {
+  return Math.pow(x, 2);
+} //sqr
+
+
+// Wandelt "orig" in einen String und füllt ihn von links mit Nullen, bis er die Länge len hat
+function leadingZero(orig, len) {
+  var res = orig.toString();
+  while (res.length < len) {
+    res = "0" + res;
+  }
+  return res;
+} //leadingZero
+
+
+// Liefert das aktuelle Datum im Format "dd.mm.yyyy"
+function getCurrentDateString() {
+  var datum = new Date();
+  return leadingZero(datum.getDate(), 2) + "." + leadingZero(datum.getMonth() + 1, 2) + "." + datum.getFullYear();
+}
+
+// Liefert einen String der Art "hh:mm" ausgehend von einer Gleitkommmazahl zwischen 0 und 23,999999
+function HHMM(hour) {
+  var h = Math.floor(hour);
+  var m = Math.round((hour - h) * 60);
+  var res = "";
+
+  if (m > 59) {
+    m -= 60;
+    h++;
+  }
+  if (h < 10) {
+    res = "0" + h.toString();
+  } else {
+    res = h.toString();
+  }
+  res += ":";
+  if (m < 10) {
+    res += "0" + m.toString();
+  } else {
+    res += m.toString();
+  }
+  return res;
+} //getCurrentDateString
+
+
+function getDayOfYear(d) {
+  //var now = new Date();
+  var start = new Date(d.getFullYear(), 0, 0);
+  var diff = d - start;
+  var oneDay = 1000 * 60 * 60 * 24;
+  var res = Math.round(diff / oneDay);
+  return res;
+}
+
+//-----------------------------------------------------------------
+// Entfernung und Winkel zuwischen zwei gegebenen Koordinaten
+//-----------------------------------------------------------------
+
+// b1, l1: Breite und Länge des ersten Punkts
+// b2, l2: Breite und Länge des zweiten Punkts
+// disang: zweielementiges Array für die Aufnahme des Ergebnisses: Entfernung in km und Winkel
+function calculateDistanceAndAngle(b1, l1, b2, l2, disang) {
+
+  var minDist = 0.001 / 60; //erst ab dieser Koordinatenentfernung rechnen wir
+  var R0 = 6371.0; //mittlerer Erdradius
+  var a, b, c, alpha, beta, gamma, kc, bearing; //Hilfsvariablen
+
+  if ((Math.abs(l1 - l2) < minDist) &&
+      (Math.abs(b1 - b2) < minDist)) {
+    disang[0] = 0;
+    disang[1] = 0;
+    return false;
+  }
+
+  if (b1 > 0) {
+    a = deg2rad(90 - b1);
+  } else {
+    a = deg2rad(b1);
+  }
+  if (b2 > 0) {
+    b = deg2rad(90 - b2);
+  } else {
+    b = deg2rad(b2);
+  }
+  gamma = deg2rad(Math.abs(l2 - l1));
+  c = Math.acos(Math.cos(a) * Math.cos(b) + Math.sin(a) * Math.sin(b) * Math.cos(gamma));
+
+  if (l1 == l2) { //Spezialfall: Längen sind gleich
+    alpha = Math.PI;
+    if (b1 < b2) {
+      beta = 0;
+    } else {
+      beta = Math.PI;
+    }
+  } else { //Normalfall: Längen sind nicht gleich
+    alpha = Math.acos((Math.cos(a) - Math.cos(b) * Math.cos(c)) / (Math.sin(b) * Math.sin(c)));
+    beta  = Math.acos((Math.cos(b) - Math.cos(c) * Math.cos(a)) / (Math.sin(a) * Math.sin(c)));
+  }
+
+  kc = c * R0;
+  if (beta != 0) {
+    bearing = 360 - rad2deg(beta);
+  } else {
+    bearing = 0; //Sonderfall, da sonst 360 anstatt 0 angezeigt wird
+  }
+  if (((l2 - l1) > 0) ||
+      ((l2 == l1) && (b2 < b1))) {
+    bearing = 360 - bearing;
+  }
+
+  disang[0] = Math.abs(kc) //Entfernung
+
+  if (bearing < 0) {
+    bearing += 180;
+  }
+  if (bearing >= 360) {
+    bearing -= 180;
+  }
+  disang[1] = bearing; //Richtungswinkel
+
+  return true;
+} //calculateDistanceAndAngle
+
+
+//-----------------------------------------------------------------
+// Project Waypoint - Berechnung eines Wegpunkts ausgehend von
+// einem Startpunkt, Entfernung und Winkel
+//-----------------------------------------------------------------
+
+function calculateProjectWaypoint(lat, lon, distance, angle, breitlang) {
+
+  var c = distance / (ha_1 / 1000.0);
+  var a, q, b, g, arg;
+  var latZiel, lonZiel;
+
+  if (lat >= 0) {
+    a = (90.0 - lat) * Math.PI / 180.0;
+  } else {
+    a = lat * Math.PI / 180.0;
+  }
+
+  q = (360.0 - angle) * Math.PI / 180;
+  b = Math.acos(Math.cos(q) * Math.sin(a) * Math.sin(c) + Math.cos(a) * Math.cos(c));
+  latZiel = 90 - (b * 180 / Math.PI);
+  if (latZiel  > 90) { //Suedhalbkugel - 180 Grad abziehen
+    latZiel -= 180;
+  }
+  if ((a == 0) || (b == 0)) {
+    g = 0;
+  } else {
+    arg = (Math.cos(c) - Math.cos(a) * Math.cos(b)) / (Math.sin(a) * Math.sin(b));
+    if (arg <= -1) {
+      g = Math.PI;
+    } else if (arg < 1) {
+      g = Math.acos(arg);
+    } else {
+      g = 0; }
+  }
+
+  if (angle <= 180) {
+    g = -1 * g;
+  }
+  lonZiel = (lon - g * 180 / Math.PI);
+
+  breitlang[0] = latZiel;
+  breitlang[1] = lonZiel;
+} //calculateProjectWaypoint
+
+//-------------------------------------------------------------------------------
+
+// Liefert eine Himmelsrichtung anhand des uebergebenen Winkels zurueck
+function kompassRichtung(deg) {
+
+  var degidx;
+  var richtungen = ["Nord (N)",
+                    "Nordnordost (NNE)",
+                    "Nordost (NE)",
+                    "Ostnordost (ENE)",
+                    "Ost (E)",
+                    "Ostsüdost (ESE)",
+                    "Südost (SE)",
+                    "Südsüdost (SSE)",
+                    "Süd (S)",
+                    "Südsüdwest (SSW)",
+                    "Südwest (SW)",
+                    "Westsüdwest (WSW)",
+                    "West (W)",
+                    "Westnordwest (WNW)",
+                    "Nordwest (NW)",
+                    "Nordnordwest (NNW)"];
+
+  //Sicherstellen dass deg im Bereich [0..360[ liegt
+  while (deg < 0) {
+    deg += 360;
+  }
+  while (deg >= 360) {
+    deg -= 360;
+  }
+
+  deg = ((deg + 11.25) / 22.5) - 0.5;
+  degidx = Math.round(deg);
+  //deg liegt nun im Bereich [0..15,9999]
+
+  //Rundungsfehler ausschließen:
+  if (degidx < 0) {
+    degidx = 0;
+  }
+  //ueber 15 geht es wieder mit 0 für "Norden" los
+  if (degidx > 15) {
+    degidx = 0;
+  }
+  return richtungen[degidx];
+} //kompassRichtung
+
+
+//----------------------------------------------------------------------------
+// START Routinen für UTM-Umrechnung
+//----------------------------------------------------------------------------
+
+// Rückgabe des UTM-Zonenbuchstabens
+function utmLetterDesignator(breite) {
+  if ((84 >= breite) && (breite >=  72)) { return "X"; } else {
+  if ((72 > breite)  && (breite >=  64)) { return "W"; } else {
+  if ((64 > breite)  && (breite >=  56)) { return "V"; } else {
+  if ((56 > breite)  && (breite >=  48)) { return "U"; } else {
+  if ((48 > breite)  && (breite >=  40)) { return "T"; } else {
+  if ((40 > breite)  && (breite >=  32)) { return "S"; } else {
+  if ((32 > breite)  && (breite >=  24)) { return "R"; } else {
+  if ((24 > breite)  && (breite >=  16)) { return "Q"; } else {
+  if ((16 > breite)  && (breite >=   8)) { return "P"; } else {
+  if (( 8 > breite)  && (breite >=   0)) { return "N"; } else {
+  if (( 0 > breite)  && (breite >=  -8)) { return "M"; } else {
+  if ((-8 > breite)  && (breite >= -16)) { return "L"; } else {
+  if ((-16 > breite) && (breite >= -24)) { return "K"; } else {
+  if ((-24 > breite) && (breite >= -32)) { return "J"; } else {
+  if ((-32 > breite) && (breite >= -40)) { return "H"; } else {
+  if ((-40 > breite) && (breite >= -48)) { return "G"; } else {
+  if ((-48 > breite) && (breite >= -56)) { return "F"; } else {
+  if ((-56 > breite) && (breite >= -64)) { return "E"; } else {
+  if ((-64 > breite) && (breite >= -72)) { return "D"; } else {
+  if ((-72 > breite) && (breite >= -80)) { return "C"; } else {
+  return "Z"; }}}}}}}}}}}}}}}}}}}} //Z=Error-Flag, wenn die Breite außerhalb der UTM-Grenzen liegt
+} //utmLetterDesignator
+
+//----------------------------------------------------------------------------
+
+// Berechnet die Entfernung vom Aequator zu einem Punkt auf der Oberflaeche
+// mit dem (in rad angegebenen) Breitengrad in Metern
+function bogenLaengeMeridian (rad_breite)
+{
+  var aa, bb, cc, dd, ee, v, res;
+
+  v = (ha_1 - ha_2) / (ha_1 + ha_2); //Verhältnis der Differenz zur Summe der beiden Halbachsen
+
+  aa = ((ha_1 + ha_2) / 2) * (1 + (sqr(v) / 4)
+       + (Math.pow(v, 4) / 64));
+  bb = (-3 * v / 2)
+       + (9 * Math.pow(v, 3) / 16)
+       - (3 * Math.pow(v, 5) / 32);
+  cc = (15 * sqr(v) / 16)
+        - (15 * Math.pow(v, 4) / 32);
+  dd = (-35 * Math.pow(v, 3) / 48.)
+       + (105 * Math.pow(v, 5) / 256);
+  ee = 315 * Math.pow (v, 4) / 512;
+
+  res = aa
+      * ( rad_breite
+	    + (bb * Math.sin (2 * rad_breite))
+        + (cc * Math.sin (4 * rad_breite))
+        + (dd * Math.sin (6 * rad_breite))
+        + (ee * Math.sin (8 * rad_breite))
+		);
+  return res;
+} //bogenLaengeMeridian
+
+//----------------------------------------------------------------------------
+
+// Zentral-Meridian (in rad) für die angegebene UTM-Zone
+function getCentralMeridian(zone) {
+  return deg2rad((6 * zone) - 183);
+} //getCentralMeridian
+
+//----------------------------------------------------------------------------
+
+// Ermittelt die UTM-Zone aus dem Laengengrad
+function getZoneFromLon(lon) {
+ return Math.floor((lon + 180.0) / 6) + 1;
+} //getZoneFromLon
+
+//----------------------------------------------------------------------------
+
+// Breite am Boden, wird gebraucht für die Konvertierung UTM -> Breite/Laenge
+// nordWert: northing-Anteil der UTM-Koordinate
+function bodenBreitengrad (nordWert)
+{
+  var y2, aa2, bb2, cc2, dd2, ee2, v, res;
+
+  v = (ha_1 - ha_2) / (ha_1 + ha_2); //Verhältnis der Differenz zur Summe der beiden Halbachsen
+
+  aa2 = ((ha_1 + ha_2) / 2) * (1 + (sqr(v) / 4)
+      + (Math.pow (v, 4) / 64));
+
+  y2 = nordWert / aa2;
+  bb2 = (3 * v / 2)
+      - (27 * Math.pow(v, 3) / 32)
+      + (269 * Math.pow(v, 5) / 512);
+  cc2 = (21 * sqr(v) / 16)
+      - (55 * Math.pow(v, 4) / 32);
+  dd2 = (151 * Math.pow(v, 3) / 96)
+      - (417 * Math.pow(v, 5) / 128);
+  ee2 = (1097 * Math.pow(v, 4) / 512);
+
+  res = y2
+      + bb2 * Math.sin(2 * y2)
+      + cc2 * Math.sin(4 * y2)
+      + dd2 * Math.sin(6 * y2)
+      + ee2 * Math.sin(8 * y2);
+
+  return res;
+} //bodenBreitengrad
+
+//----------------------------------------------------------------------------
+
+// Breite/Laenge in (x,y)-Koordinaten umwandeln (das sind noch keine UTM-Koordinaten, da
+// der Korrekturfaktor noch fehlt)
+// breite_rad: Breitengrad in rad
+// laenge_rad: Laengengrad in rad
+// laenge_central_rad: Laengengrad des verwendeten Zentralmeridians in rad
+// Ergebnis: xy = 2-Elemente-Array mit den X- und Y-Koordinaten
+function mapLatLonToXY (breite_rad, laenge_rad, laenge_central_rad, xy)
+{
+  var q, fak1, tan_breite, tb2, delta_l;
+  var term1, term2, term3, term4, term5, term6;
+
+  fak1 = (sqr(ha_1) - sqr(ha_2)) / sqr(ha_2) * sqr(Math.cos(breite_rad));
+
+  q = sqr(ha_1) / (ha_2 * Math.sqrt(1 + fak1));
+
+  tan_breite = Math.tan (breite_rad);
+  tb2 = sqr(tan_breite);
+
+  delta_l = laenge_rad - laenge_central_rad;
+
+  term1 = 1
+        - tb2
+        + fak1;
+
+  term2 = 5
+        - tb2
+        + 9 * fak1
+        + 4 * sqr(fak1);
+
+  term3 = 5
+        - 18 * tb2
+        + sqr(tb2)
+        + 14 * fak1
+        - 58 * tb2 * fak1;
+
+  term4 = 61
+        - 58 * tb2
+        + sqr(tb2)
+        + 270 * fak1
+        - 330 * tb2 * fak1;
+
+  term5 = 61
+        - 479 * tb2
+        + 179 * sqr(tb2)
+        - Math.pow(tb2, 3);
+
+  term6 = 1385
+        - 3111 * tb2
+        + 543 * sqr(tb2)
+        - Math.pow(tb2, 3);
+
+  // xy[0] = Rechtswert
+  xy[0] = q * Math.cos(breite_rad) * delta_l
+        + (q /    6 * Math.pow(Math.cos(breite_rad), 3) * term1 * Math.pow(delta_l, 3))
+        + (q /  120 * Math.pow(Math.cos(breite_rad), 5) * term3 * Math.pow(delta_l, 5))
+        + (q / 5040 * Math.pow(Math.cos(breite_rad), 7) * term5 * Math.pow(delta_l, 7));
+
+  // xy[0] = Hochwert
+  xy[1] = bogenLaengeMeridian(breite_rad)
+        + (tan_breite /     2 * q * Math.pow(Math.cos(breite_rad), 2) *         Math.pow(delta_l, 2))
+        + (tan_breite /    24 * q * Math.pow(Math.cos(breite_rad), 4) * term2 * Math.pow(delta_l, 4))
+        + (tan_breite /   720 * q * Math.pow(Math.cos(breite_rad), 6) * term4 * Math.pow(delta_l, 6))
+        + (tan_breite / 40320 * q * Math.pow(Math.cos(breite_rad), 8) * term6 * Math.pow(delta_l, 8));
+
+  return;
+} //mapLatLonToXY
+
+//----------------------------------------------------------------------------
+
+// (x,y)-Koordinaten in Breite/Laenge (rad) umwandeln
+// x und y: Rechtswert und Hochwert in Mehtern
+// laenge_central_rad: Laengengrad des verwendeten Zentralmeridians in rad
+// Ausgabe: breitlang = 2-Element-Array mit der Breite und Laenge in rad
+function mapXYToLatLon (x, y, laenge_central_rad, breitlang)
+{
+  var bbg, trm, hdc2, hadiff, tanbbg, tanbbg2, tanbbg4, cosbbg;
+  var term1, term2, term3, term4, term5, term6, term7, term8;
+  var coeff2, coeff3, coeff4, coeff5, coeff6, coeff7, coeff8;
+
+  bbg = bodenBreitengrad(y);
+  hadiff = (sqr(ha_1) - sqr(ha_2)) / sqr(ha_2);
+  cosbbg = Math.cos(bbg);
+  hdc2 = hadiff * sqr(cosbbg);
+
+  trm = sqr(ha_1) / (ha_2 * Math.sqrt(hdc2 + 1));
+
+  tanbbg = Math.tan (bbg);
+  tanbbg2 = sqr(tanbbg);
+  tanbbg4 = sqr(tanbbg2);
+
+  term1 = 1 / (       trm             * cosbbg);
+  term3 = 1 / (6    * Math.pow(trm,3) * cosbbg);
+  term5 = 1 / (120  * Math.pow(trm,5) * cosbbg);
+  term7 = 1 / (5040 * Math.pow(trm,7) * cosbbg);
+
+  term2 = tanbbg / (2     * Math.pow(trm, 2));
+  term4 = tanbbg / (24    * Math.pow(trm, 4));
+  term6 = tanbbg / (720   * Math.pow(trm, 6));
+  term8 = tanbbg / (40320 * Math.pow(trm, 8));
+
+  coeff2 = -1
+          - hdc2;
+
+  coeff3 = -1
+          - 2 * tanbbg2
+		  - hdc2;
+
+  coeff4 =  5
+          + 3 * tanbbg2
+		  + 6 * hdc2
+		  - 6 * tanbbg2 * hdc2
+    	  - 3 * sqr(hdc2)
+		  - 9 * tanbbg2 * sqr(hdc2);
+
+  coeff5 =  5
+         + 28 * tanbbg2
+		 + 24 * tanbbg4
+		 +  6 * hdc2
+		 +  8 * tanbbg2 * hdc2;
+
+  coeff6 = -61
+          - 90  * tanbbg2
+		  - 45  * tanbbg4
+		  - 107 * hdc2
+    	  + 162 * tanbbg2 * hdc2;
+
+  coeff7 = -61
+          - 662  * tanbbg2
+		  - 1320 * tanbbg4
+		  - 720  * (tanbbg4 * tanbbg2);
+
+  coeff8 =  1385
+          + 3633 * tanbbg2
+		  + 4095 * tanbbg4
+		  + 1575 * (tanbbg4 * tanbbg2);
+
+  //Breitengrad:
+  breitlang[0] = bbg
+               + term2 * coeff2 * sqr(x)
+    	       + term4 * coeff4 * Math.pow(x, 4)
+    	       + term6 * coeff6 * Math.pow(x, 6)
+    	       + term8 * coeff8 * Math.pow(x, 8);
+
+  //Laengengrad:
+  breitlang[1] = laenge_central_rad + term1 * x
+    	       + term3 * coeff3 * Math.pow(x, 3)
+    	       + term5 * coeff5 * Math.pow(x, 5)
+    	       + term7 * coeff7 * Math.pow(x, 7);
+
+  return;
+} //mapXYToLatLon
+
+//----------------------------------------------------------------------------
+
+// Breitengrad/Laengengrad in UTM-Koordinaten konvertieren
+// Die verwendete Zone wird hierin ermittelt und als Funktionswert zurückgegeben.
+function latLonToUTM(lat, lon, xy)
+{
+  var zone = getZoneFromLon(rad2deg(lon));
+
+  mapLatLonToXY(lat, lon, getCentralMeridian(zone), xy);
+
+  //Korrekturfaktor für UTM:
+  xy[0] = xy[0] * UTMScaleFactor + 500000;
+  xy[1] = xy[1] * UTMScaleFactor;
+  if (xy[1] < 0) {
+    xy[1] = xy[1] + 10000000;
+  }
+  return zone;
+} //latLonToUTM
+
+//----------------------------------------------------------------------------
+
+// UTM-Koordinaten in Breitengrad/Laengengrad konvertieren
+// suedHalbkugel: true fuer Koordinaten suedlich von 0° Breite, false fuer noerdliche
+// latlon: 2-Elemente-Array als Rueckgabewert fuer Laenge und Breite
+function utmToLatLon (easting, northing, zone, suedHalbkugel, latlon)
+{
+  var centerMeridian;
+
+  easting = (easting - 500000) / UTMScaleFactor;
+
+   // auf Suedhalbkugel den Hochwert anpassen
+  if (suedHalbkugel) {
+    northing = northing - 10000000;
+  }
+  northing = northing / UTMScaleFactor;
+  centerMeridian = getCentralMeridian(zone);
+  mapXYToLatLon (easting, northing, centerMeridian, latlon);
+  latlon[0] = rad2deg(latlon[0]);
+  latlon[1] = rad2deg(latlon[1]);
+
+  return;
+} //utmToLatLon
+
+//----------------------------------------------------------------------------
+// END Routinen für UTM-Umrechnung
+//----------------------------------------------------------------------------
+
+
+// Berechnet die UTM-Koordinaten aus uebergebenem Breiten- und Laengengrad
+// und gibt den entsprechenden UTM-String zurueck
+function getUTMCoordString(breitedez, laengedez) {
+
+  if (breitedez <= -80) {
+    return "UTM-Format nicht definiert für Breiten <= S80°";
+  }
+  if (breitedez > 84) {
+    return "UTM-Format nicht definiert für Breiten > N84°";
+  }
+  var xy = new Array(2);
+  //var zone = Math.floor((laengedez + 180.0) / 6) + 1;
+
+  var zone = latLonToUTM(deg2rad(breitedez), deg2rad(laengedez), xy)
+
+  var utmString = zone.toString() + " "
+                + utmLetterDesignator(breitedez) + " "
+                + xy[0].toFixed(0).toString() + " "
+                + xy[1].toFixed(0).toString();
+  return utmString;
+} //getUTMCoordString
+
+//-----------------------------------------------------------------------
+
+// Wandelt den übergebenen Winkel in Grad und Minuten mit 3 Nachkommastellen um
+// und gibt ihn als String mit vorangestelltem character aus
+function toDegMin(value, character) {
+
+  value = Math.abs(value);
+
+  var res = ""; //String fuer das Ergebnis
+  var degs = Math.floor(value); //Ganze Gradzahl
+  var frac = value - degs;  //Nachkommaanteil
+  res = character + degs.toString() + "° ";
+  var min = frac * 60;
+  min = min.toFixed(3);
+  if (min < 10) {
+    res += "0" + min.toString();
+  } else {
+    res += min.toString();
+  }
+  res += "'";
+  return res;
+} //toDegMin
+
+//-----------------------------------------------------------------------
+
+// Wandelt den übergebenen Winkel in Grad, Minuten, Sekunden um und gibt ihn
+// als String mit vorangestelltem character aus
+function toDegMinSec(value, character) {
+
+  value = Math.abs(value);
+
+  var res = ""; //String fuer das Ergebnis
+  var degs = Math.floor(value); //Ganze Gradzahl
+  var frac = value - degs;  //Nachkommaanteil
+  res = character + degs.toString() + "° ";
+  var min = frac * 60;
+  var sec = 60 * (min - Math.floor(min));
+  min = Math.floor(min);
+  sec = Math.floor(sec);
+  res += min.toString() + "' ";
+  res += sec.toString() + '"';
+  return res;
+} //toDegMinSec
+
+//-----------------------------------------------------------------------
+
+// Gibt anhand der übergebenen Werte für Breitengrad und Längengrad einen
+// Koordinatenstring im Dezimalformat zurück (Nd.ddddd Ed.ddddd)
+function coordStringD(lat, lon) {
+
+  var erg;
+
+  if (lat < 0) {
+    erg = "S";
+    lat = Math.abs(lat);
+  } else {
+    erg = "N";
+  }
+  erg += lat.toFixed(5).toString() + " ";
+  if (lon < 0) {
+    erg += "W";
+    lon = Math.abs(lon);
+  } else {
+    erg += "E";
+  }
+  erg += lon.toFixed(5).toString();
+  return erg;
+} //coordStringD
+
+//-----------------------------------------------------------------------
+
+// Gibt anhand der übergebenen Werte für Breitengrad und Längengrad einen
+// Koordinatenstring im Dezimalformat zurück (Ndd° mm.mmm' Edsd° mm.mmmm')
+function coordStringDM(lat, lon) {
+
+  var c;
+  var erg;
+
+  if (lat < 0) {
+    c = "S";
+  } else {
+    c = "N";
+  }
+  erg = toDegMin(lat, c);
+
+  if (lon < 0) {
+    c = "W";
+  } else {
+    c = "E";
+  }
+  erg += " " + toDegMin(lon, c);
+  return erg;
+} //coordStringDM
+
+//-----------------------------------------------------------------------
+
+// Gibt anhand der übergebenen Werte für Breitengrad und Längengrad einen
+// Koordinatenstring im Format Grad Minuten Sekunden zurück
+function coordStringDMS(lat, lon) {
+
+  var c;
+  var erg;
+
+  if (lat < 0) {
+    c = "S";
+  } else {
+    c = "N";
+  }
+  erg = toDegMinSec(lat, c);
+
+  if (lon < 0) {
+    c = "W";
+  } else {
+    c = "E";
+  }
+  erg += " " + toDegMinSec(lon, c);
+  return erg;
+
+} //coordStringDMS
+
+//-----------------------------------------------------------------------
+
+// Zeigt den übergebenen Koordinatenstring mit dem angegebenen Zoomfaktor in einer
+// GoogleMaps-Karte.
+// Koordinatenstring muss zwei Floating-Point-Zahlen mit Vorzeichen und durch Semikolon
+// getrennt beinhalten.
+function showGoogleMaps(sKoordMath, zoomfaktor) {
+
+  var url = "https://www.google.de/maps/place/";
+  var br, le;
+  var sArray = sKoordMath.split(";");
+  br = parseFloat(sArray[0]);
+  le = parseFloat(sArray[1]);
+
+  if (br < 0) {
+    url += "S" + Math.abs(br).toString();
+  } else {
+    url += "N" + Math.abs(br).toString();
+  }
+  if (le < 0) {
+    url += ",W" + Math.abs(le).toString();
+  } else {
+    url += ",E" + Math.abs(le).toString();
+  }
+  url += "/@" + br + "," + le + "," + zoomfaktor + "z";
+  window.open(url, "map");
+} //showGoogleMaps
+
+//-----------------------------------------------------------------------
+//-----------------------------------------------------------------------
+//-----------------------------------------------------------------------
+
+// Wandelt einen Koordinatenstring im Format "Ndd.ddddd Edd.ddddd"
+// in ein Array mit zwei Floating-Zahlen um
+function getCoordsFromDezCoordString(sDez, aCoords) {
+
+  var sDezimal = sDez.replace("  "," ").replace(",",".").toUpperCase().trim();
+
+  var sArray = sDezimal.split(" ");
+  if (sArray.length != 2) {
+    return "Koordinatenangaben im Dezimalformat müssen aus zwei durch Leerzeichen getrennten Angaben bestehen.";
+  }
+
+  //Breite steht in sArray[0], Laenge in sArray[1]
+  if (sArray[0].substring(0,1) == "N") {
+    sArray[0] = sArray[0].substring(1);
+  } else if (sArray[0].substring(0,1) == "S") {
+     sArray[0] = "-" + sArray[0].substring(1);
+  } else {
+    return "Wert für 'Breite' ist kein gültiger Wert (muss mit 'N' oder 'S' beginnen).";
+  }
+
+  if (sArray[1].substring(0,1) == "E") {
+    sArray[1] = sArray[1].substring(1);
+  } else if (sArray[1].substring(0,1) == "W") {
+    sArray[1] = "-" + sArray[1].substring(1);
+  } else {
+     return "Wert für 'Länge' ist kein gültiger Wert (muss mit 'E' oder 'W' beginnen).";
+  }
+
+  if ((isNaN(sArray[0])) || (parseFloat(sArray[0]) < -90) || (parseFloat(sArray[0]) > 90)) {
+    return "Wert für 'Breite' muss mit N oder S beginnen, gefolgt von einer Zahl kleiner 90.";
+  }
+  if ((isNaN(sArray[1])) || (parseFloat(sArray[1]) < -180) || (parseFloat(sArray[1]) > 180)) {
+    return "Wert für 'Länge' muss mit E oder W beginnen, gefolgt von einer Zahl kleiner 180.";
+  }
+
+  aCoords[0] = parseFloat(sArray[0]);
+  aCoords[1] = parseFloat(sArray[1]);
+  return "";
+} //getCoordsFromDezCoordString
+
+//----------------------------------------------------------------------------------------------
+
+
+// Wandelt einen Koordinatenstring im Format "Ndd mm.mmm Eddd mm.mmm"
+// in ein Array mit zwei Floating-Zahlen um
+function getCoordsFromCoordString(sCoordString, aCoords) {
+
+  var sRoh = sCoordString.replace(/,/g, ".").replace("  "," ").replace(/°/g, "").replace(/'/g,"").toUpperCase().trim();
+  var sArray = sRoh.split(" ");
+  var vz_lat = 1,
+      vz_lon = 1;
+  var breite, laenge;
+
+  if (sArray.length != 4) {
+    return "Koordinatenangaben im Format 'Grad Minute' müssen aus vier durch Leerzeichen getrennten Angaben bestehen.";
+  }
+
+  if (sArray[0].substring(0,1) == "N") {
+    sArray[0] = sArray[0].substring(1);
+  } else if (sArray[0].substring(0,1) == "S") {
+     sArray[0] = sArray[0].substring(1);
+     vz_lat = -1;
+  } else {
+    return "Wert für 'Breite' ist kein gültiger Wert (muss mit 'N' oder 'S' beginnen).";
+  }
+
+  if (sArray[2].substring(0,1) == "E") {
+    sArray[2] = sArray[2].substring(1);
+  } else if (sArray[2].substring(0,1) == "W") {
+    sArray[2] = sArray[2].substring(1);
+    vz_lon = -1;
+  } else {
+     return "Wert für 'Länge' ist kein gültiger Wert (muss mit 'E' oder 'W' beginnen).";
+  }
+
+  if ((isNaN(sArray[0])) || (parseFloat(sArray[0]) < 0) || (parseFloat(sArray[0]) >= 90)) {
+    return "Wert für 'Breite' muss mit N oder S beginnen, gefolgt von einer Zahl kleiner 90.";
+  }
+  if ((isNaN(sArray[2])) || (parseFloat(sArray[2]) < 0) || (parseFloat(sArray[21]) >= 180)) {
+    return "Wert für 'Länge' muss mit E oder W beginnen, gefolgt von einer Zahl kleiner 180.";
+  }
+  if ((isNaN(sArray[1])) || (parseFloat(sArray[1]) < 0) || (parseFloat(sArray[1]) >= 60)) {
+    return "Wert für 'Minute (Breite)' muss eine Zahl kleiner 60 sein.";
+  }
+  if ((isNaN(sArray[3])) || (parseFloat(sArray[3]) < 0) || (parseFloat(sArray[3]) >= 60)) {
+    return "Wert für 'Minute (Länge)' muss eine Zahl kleiner 60 sein.";
+  }
+
+  breite = vz_lat * (parseFloat(sArray[0]) + parseFloat(sArray[1]) / 60);
+  laenge = vz_lon * (parseFloat(sArray[2]) + parseFloat(sArray[3]) / 60);
+  aCoords[0] = breite;
+  aCoords[1] = laenge;
+  return "";
+
+} //getCoordsFromCoordString
+
+//----------------------------------------------------------------------------
+
+// Wird aufgerufen, wenn der Button "Berechnung durchführen" beim Tool "Koordinatenabstand
+// und Winkel" gedrückt wird.
+function distanceAndAngle(sKrd1Dez, sKrd1DM, sKrd2Dez, sKrd2DM) {
+
+  var startKoords = new Array(2);
+  var zielKoords = new Array(2);
+  var sError = new String();
+  var disang = new Array(2);
+
+  var ergDistance = 0;
+  var ergAngle = 0;
+  var ergCompass = "";
+
+  /*var sKrd1Dez = document.koordabstand.krd1dez.value.toUpperCase().replace(/,/g, ".");
+  document.koordabstand.krd1dez.value = sKrd1Dez;
+  var sKrd2Dez = document.koordabstand.krd2dez.value.toUpperCase().replace(/,/g, ".");
+  document.koordabstand.krd2dez.value = sKrd2Dez;
+  var sKrd1DM = document.koordabstand.krd1dm.value.toUpperCase().replace(/,/g, ".");
+  document.koordabstand.krd1dm.value = sKrd1DM;
+  var sKrd2DM = document.koordabstand.krd2dm.value.toUpperCase().replace(/,/g, ".");
+  document.koordabstand.krd2dm.value = sKrd2DM;*/
+  sKrd1Dez = sKrd1Dez.toUpperCase().replace(/,/g, ".");
+  sKrd1DM = sKrd1DM.toUpperCase().replace(/,/g, ".");
+  sKrd2Dez = sKrd2Dez.toUpperCase().replace(/,/g, ".");
+  sKrd2DM = sKrd2DM.toUpperCase().replace(/,/g, ".");
+
+
+  if ((sKrd1Dez == "") && (sKrd1DM == "")) {
+    alert("Fehler: Koordinaten von Punkt 1: bitte eines der beiden Felder füllen.");
+    return;
+  }
+  if ((sKrd1Dez != "") && (sKrd1DM != "")) {
+    alert("Fehler: Koordinaten von Punkt 1: bitte nur eines der beiden Felder füllen.");
+    return;
+  }
+  if ((sKrd2Dez == "") && (sKrd2DM == "")) {
+    alert("Fehler: Koordinaten von Punkt 2: bitte eines der beiden Felder füllen.");
+    return;
+  }
+  if ((sKrd2Dez != "") && (sKrd2DM != "")) {
+    alert("Fehler: Koordinaten von Punkt 2: bitte nur eines der beiden Felder füllen.");
+    return;
+  }
+
+  if (sKrd1Dez != "") {
+    sError = getCoordsFromDezCoordString(sKrd1Dez, startKoords);
+    if (sError != "") {
+      alert("Fehler bei Koordinaten von Punkt 1: " + sError);
+      return;
+    }
+
+  } else {
+    sError = getCoordsFromCoordString(sKrd1DM, startKoords);
+    if (sError != "") {
+      alert("Fehler bei Koordinaten von Punkt 1: " + sError);
+      return;
+    }
+  }
+
+  if (sKrd2Dez != "") {
+    sError = getCoordsFromDezCoordString(sKrd2Dez, zielKoords);
+    if (sError != "") {
+      alert("Fehler bei Koordinaten von Punkt 2: " + sError);
+      return;
+    }
+  } else {
+    sError = getCoordsFromCoordString(sKrd2DM, zielKoords);
+    if (sError != "") {
+      alert("Fehler bei Koordinaten von Punkt 2: " + sError);
+      return;
+    }
+  }
+
+  //eigentliche Berechnung durchfuehren
+  calculateDistanceAndAngle(startKoords[0], startKoords[1], zielKoords[0], zielKoords[1], disang);
+  ergDistance = disang[0].toFixed(3);
+  ergAngle = disang[1].toFixed(2);
+  document.getElementById("entfernung").innerHTML = ergDistance.toString() + " km";
+  document.getElementById("richtungswinkel").innerHTML = ergAngle.toString() + " Grad";
+  document.getElementById("kompassrichtung").innerHTML = kompassRichtung(disang[1]);
+
+} //distanceAndAngle
+
+//-------------------------------------------------------------------------------------
+
+function projectWaypoint(sKrdDez, sKrdDM, sDistance, sAngle) {
+
+  var startKoords = new Array(2);
+  var zielKoords = new Array(2);
+  //var sKrdDez = document.wpp.wppkrddez.value.toUpperCase().replace(/,/g, ".");
+  sKrdDez = sKrdDez.toUpperCase().replace(/,/g, ".");
+  //document.wpp.wppkrddez.value = sKrdDez;
+
+  //var sKrdDM = document.wpp.wppkrddm.value.toUpperCase().replace(/,/g, ".");
+  sKrdDM = sKrdDM.toUpperCase().replace(/,/g, ".");
+  //document.wpp.wppkrddm.value = sKrdDM;
+
+  //var sDistance = document.wpp.entf.value.replace(/,/g, ".");
+  sDistance = sDistance.replace(/,/g, ".");
+
+  //var sAngle = document.wpp.richtung.value.replace(/,/g, ".");
+  sAngle = sAngle.replace(/,/g, ".");
+
+  if ((sKrdDez == "") && (sKrdDM == "")) {
+    alert("Fehler: Koordinaten des Startpunkts: bitte eines der beiden Felder füllen.");
+    return;
+  }
+  if ((sKrdDez != "") && (sKrdDM != "")) {
+    alert("Fehler: Koordinaten des Startpunkts: bitte nur eines der beiden Felder füllen.");
+    return;
+  }
+
+  if (sKrdDez != "") {
+    sError = getCoordsFromDezCoordString(sKrdDez, startKoords);
+    if (sError != "") {
+      alert("Fehler bei Koordinaten des Startpunkts: " + sError);
+      return;
+    }
+
+  } else {
+    sError = getCoordsFromCoordString(sKrdDM, startKoords);
+    if (sError != "") {
+      alert("Fehler bei Koordinaten des Startpunkts: " + sError);
+      return;
+    }
+  }
+
+  if ((sDistance == "") || (isNaN(sDistance)) || (parseFloat(sDistance) <= 0) || (parseFloat(sDistance) > 40074)) {
+    alert("Wert für 'Entfernung' muss eine Zahl größer 0 und kleiner 40074 sein.");
+    return;
+  }
+  if ((sAngle == "") || (isNaN(sAngle)) || (parseFloat(sAngle) < 0) || (parseFloat(sAngle) >= 360)) {
+    alert("Wert für 'Richtungswinkel' muss eine Zahl größer gleich 0 und kleiner 360 sein.");
+    return;
+  }
+
+  calculateProjectWaypoint(startKoords[0], startKoords[1], parseFloat(sDistance), parseFloat(sAngle), zielKoords);
+
+  document.getElementById("kpr").innerHTML = kompassRichtung(parseFloat(sAngle));
+  document.getElementById("zielkoorddez").innerHTML = coordStringD(zielKoords[0], zielKoords[1]);
+  document.getElementById("zielkoorddm").innerHTML = coordStringDM(zielKoords[0], zielKoords[1]);
+  document.getElementById("zielkoorddms").innerHTML = coordStringDMS(zielKoords[0], zielKoords[1]);
+  document.getElementById("zielkoordutm").innerHTML = getUTMCoordString(zielKoords[0], zielKoords[1]);
+
+} //projectWaypoint
+
+//-------------------------------------------------------------------------------------
+//- Berechnungsfunktionen zu Sonnenaufgang und Sonnenuntergang
+//-------------------------------------------------------------------------------------
+
+
+// Deklination der Sonne in Radians
+// Formula 2008 by Arnold(at)Barmettler.com, fit to 20 years of average declinations (2008-2017)
+function sonnendeklination(T) {
+  return 0.409526325277017 * Math.sin(0.0169060504029192 * (T - 80.0856919827619));
+} //sonnendeklination
+
+
+// Dauer des halben Tagbogens in Stunden: Zeit von Sonnenaufgang bis zum höchsten Stand im Süden.
+// Im Fall der Polarnacht wird -1, im Fall der Mitternachtssonne +13 zurückgegeben.
+function zeitdifferenz(Deklination, B) {
+  var lv_a = Math.sin(h);
+  var lv_b = Math.sin(B);
+  var lv_c = Math.sin(Deklination);
+  var lv_d = Math.cos(B);
+  var lv_e = Math.cos(Deklination);
+  var lv_z = (lv_a - lv_b * lv_c);
+  var lv_n = (lv_d * lv_e);
+
+  if ((lv_z / lv_n) > 1) { //Dauernacht
+    return -1;
+  } else if ((lv_z / lv_n) < -1) { //Dauertag
+    return 13;
+  } else {
+    return 12 * Math.acos( lv_z / lv_n) / Math.PI;
+  }
+} //zeitdifferenz
+
+
+// Differenz zwischen wahrer und mittlerer Sonnenzeit
+// formula 2008 by Arnold(at)Barmettler.com, fit to 20 years of average equation of time (2008-2017)
+function zeitgleichung(T) {
+  return -0.170869921174742 * Math.sin(0.0336997028793971 * T + 0.465419984181394)
+          - 0.129890681040717 * Math.sin(0.0178674832556871 * T - 0.167936777524864);
+} //zeitgleichung
+
+
+function aufgang(T, B) {
+  var DK = sonnendeklination(T);
+  var erg = 12 - zeitdifferenz(DK, B) - zeitgleichung(T);
+  if (isNaN(erg)) {
+    return 0;
+  } else {
+    return erg;
+  }
+} //aufgang
+
+
+function untergang(T, B) {
+  var DK = sonnendeklination(T);
+  var erg = 12 + zeitdifferenz(DK, B) - zeitgleichung(T);
+  if (isNaN(erg)) {
+    return 24;
+  }else {
+    return erg;
+  }
+} //untergang
+
+
+// Berechnung von Azimut und Höhe des Sonnenmittelpunkts über Horizont
+// Rueckgabe ueber das Array AHArray, bestehend aus zwei Float-Zahlen
+function AzimutHoehe(B, T, ZeitSeitMittag, AHArray) {
+  const Sternzeitkorrektur = 1.0027379;
+  var DK = sonnendeklination(T);
+  var cosdec = Math.cos(DK);
+  var sindec = Math.sin(DK);
+  var lha = ZeitSeitMittag * (Sternzeitkorrektur - 1/365.25) * 15 * RAD; // Stundenwinkel seit wahrem Mittag in Radians
+  // 1/365.25: Fortschreiten der Rektaszension der Sonne in einem Tag in Grad
+  var coslha = Math.cos(lha);
+  var sinlha = Math.sin(lha);
+  var coslat = Math.cos(B);
+  var sinlat = Math.sin(B);
+  var N = -1 * cosdec * sinlha;
+  var D = sindec * coslat - cosdec * coslha * sinlat;
+  AHArray[0] = Math.atan2(N, D);
+  if (AHArray[0] < 0) {
+    AHArray[0] += 2 * Math.PI; // Azimut. Norden=0, Osten=pi/2, Westen=3/4pi
+  }
+  AHArray[1] = Math.asin(sindec * sinlat + cosdec * coslha * coslat); //Höhe des Sonnenmittelpunkts
+} //AzimutHoehe
+
+
+// Näherungslösung für die Refraktion für ein Objekt bei Höhe hoehe über mathematischem Horizont
+// Refraktion beträgt bei Sonnenaufgang 34 Bogenminuten = 0.56667°
+// Falls die Höhe der Sonne nicht genauer als auf 0.5° gewünscht ist, kann diese Funktion ignoriert werden
+function Refraktion(hoehe) {
+
+  var P = 1013.25; // Luftdruck der Standard-Atmosphäre in hPa
+  var T = 15; // Temperatur der Standard-Atmosphäre in °C
+  var R = 0;
+
+  if (hoehe >= 15 * RAD) {
+    R = 0.00452 * RAD * P / (Math.tan(hoehe) * (273+T)); // über 15° - einfachere Formel
+  } else {
+    if (hoehe > -1 * RAD) {
+      R = RAD * P * (0.1594 + 0.0196 * hoehe + 0.00002 * hoehe * hoehe) /
+               ((273.15 + T) * (1 + 0.505 * hoehe + 0.0845 * hoehe * hoehe));
+    }
+  }
+  return R; // Refraktion in Radians
+} //Refraktion
+
+
+// Berechnet den Stand der Sonne zu einer bestimmten Zeit und einem bestimmmten Tag des Jahres,
+// außerdem Sonnenauf- und -untergang für diesen Tag.
+// Zone: Zeitdifferenz zur Weltzeit, =1 für MEZ
+// DayOfYear: Tag des Jahres
+// Zeit in Stunden (Dezimal-Minuten!); nur für die Berechnung von Azimut und Höhe
+// Die internen Variablen Aufgang und Untergang beinhalten die Uhrzeitenim Dezimalformat
+// ResArray: Array mit vier Elementen (Realzahlen), wird mit folgendem Inhalt gefüllt:
+// ResArray[0] = Aufgang in Stunden (0-24)
+// ResArray[1] = Untergang in Stunden (0-24)
+// ResArray[2] = Sonnenazimuth in Grad (Sonnenstand in Abh. von Tageszeit: 0°-Norden, 90°-Osten, 180°-Süden, 270°-Westen)
+// ResArray[3] = Hoehe des Sonnenstandes in Grad, abhängig von Tageszeit (0 Grad = genau am Horizont)
+function CalculateSun(Laenge, Breite, DayOfYear, Zone, Zeit, ResArray) {
+
+  var Brad = Breite * RAD; // geogr. Breite in Radians
+  var T = DayOfYear; //Tag des Jahres
+
+  var Aufgang = aufgang(DayOfYear, Brad);
+  var Untergang = untergang(DayOfYear, Brad);
+  var ZeitSeitMittag;
+  var AHArray = new Array(2);
+  var AzimuthGrad;
+  var HoeheGrad;
+
+  Aufgang = Aufgang - Laenge / 15 + Zone; // Sonnenaufgang bei gesuchter Länge und Zeitzone in Stunden
+  Untergang = Untergang - Laenge / 15 + Zone; // Sonnenuntergang bei gesuchter Länge und Zeitzone in Stunden
+
+  // Ab hier Berechnung von Azimut und Höhe zu gegebener Zeit
+  ZeitSeitMittag = Zeit + Laenge / 15 - Zone - 12 + zeitgleichung(T);  // Zeit in Stunden seit Sonne im Süden
+  AzimutHoehe(Brad , T, ZeitSeitMittag, AHArray); // Azimut/Höhe über mathematischem Horizont des Sonnenmittelpunkts
+
+  //lblSunrise.Text = HHMM(Aufgang);
+  //lblSunset.Text = HHMM(Untergang);
+  ResArray[0] = Aufgang;
+  ResArray[1] = Untergang;
+  ResArray[2] = (AHArray[0] / RAD); // Azimut in Grad: 0°-Norden, 90°-Osten, 180°-Süden, 270°-Westen
+  ResArray[3] = ((AHArray[1] + Refraktion(AHArray[1])) / RAD); // Höhe mit Refraktionskorrektur in Grad
+
+} //CalculateSun
+
+
+// Berechnung der Sonnenposition anhand des übergebenen Koordinatenstrings, Datum, Stunde und Minute.
+// Direktes Befüllen der Ziel-DIVs. Alert bei Fehler.
+function calcSunPosition(sKrdDez, sKrdDM, sDate, sHH, sMM, sZone) {
+
+  var koords = new Array(2);
+  var zielKoords = new Array(2);
+  var dateParts = sDate.split(".");
+  var dateOfYear, timeOfDay;
+  var hh, mm, tt;
+  var resultarray = new Array(4);
+  var hourSunset, hourSunrise;
+  var s;
+  var zone = parseFloat(sZone);
+
+  if (dateParts.length != 3) {
+    alert("Fehler: Datum muss im Format dd.mm.jjjj angegeben werden.");
+    return;
+  }
+  dateOfYear = new Date(dateParts[2], dateParts[1] - 1, dateParts[0]);
+
+  hh = parseFloat(sHH);
+  if ((isNaN(hh)) || (parseFloat(sHH) < 0) || (parseFloat(sHH) > 23)) {
+    alert("Fehler: Die Stunde der Uhrzeit muss zwischen 0 und 23 liegen.");
+    return;
+  }
+  mm = parseFloat(sMM);
+  if ((isNaN(mm)) || (parseFloat(sMM) < 0) || (parseFloat(sMM) > 59)) {
+    alert("Fehler: Die Minutenangabe der Uhrzeit muss zwischen 0 und 59 liegen.");
+    return;
+  }
+  timeOfDay = hh + mm / 60;
+
+  sKrdDez = sKrdDez.toUpperCase().replace(/,/g, ".");
+  sKrdDM = sKrdDM.toUpperCase().replace(/,/g, ".");
+  if ((sKrdDez == "") && (sKrdDM == "")) {
+    alert("Fehler: Koordinaten des Standpunkts: bitte eines der beiden Felder füllen.");
+    return;
+  }
+  if ((sKrdDez != "") && (sKrdDM != "")) {
+    alert("Fehler: Koordinaten des Standpunkts: bitte nur eines der beiden Felder füllen.");
+    return;
+  }
+  if (sKrdDez != "") {
+    sError = getCoordsFromDezCoordString(sKrdDez, koords);
+    if (sError != "") {
+      alert("Fehler bei Koordinaten des Standpunkts: " + sError);
+      return;
+    }
+  } else {
+    sError = getCoordsFromCoordString(sKrdDM, koords);
+    if (sError != "") {
+      alert("Fehler bei Koordinaten des Standpunkts: " + sError);
+      return;
+    }
+  }
+
+  var dayofyear = getDayOfYear(dateOfYear);
+
+  CalculateSun(koords[1], koords[0], dayofyear, zone, timeOfDay, resultarray);
+  // ResArray[0] = Aufgang in Stunden (0-24)
+  // ResArray[1] = Untergang in Stunden (0-24)
+  // ResArray[2] = Sonnenazimuth in Grad (Sonnenstand in Abh. von Tageszeit: 0°-Norden, 90°-Osten, 180°-Süden, 270°-Westen)
+  // ResArray[3] = Hoehe des Sonnenstandes in Grad, abhängig von Tageszeit (0 Grad = genau am Horizont)
+
+  // Angabe der Zeiten für Sonnenaufgang und -Untergang bedürfen einer Sonderbehandlung, da für bestimmte Breitengrad
+  // ab dem Polarkreis diese nicht für alle Tage definiert sind.
+
+  if (isNaN(resultarray[0])) {
+    s = "Sonnenaufgang nicht definiert!";
+  } else {
+    hourSunrise = resultarray[0];
+    s = HHMM(hourSunrise);
+  }
+  s += " / ";
+
+  if (isNaN(resultarray[1])) {
+    s += "Sonnenuntergang nichtg definiert!";
+  } else {
+    hourSunset = resultarray[1];
+    s += HHMM(hourSunset ) + " (Untergang)";
+  }
+  document.getElementById("sunrisesunset").innerHTML = s;
+
+  document.getElementById("zielkoordmath").innerHTML = koords[0].toFixed(5).toString() + " ; " + koords[1].toFixed(5).toString();
+
+  document.getElementById("zielkoorddez").innerHTML = coordStringD(koords[0], koords[1]);
+  document.getElementById("zielkoorddm").innerHTML = coordStringDM(koords[0], koords[1]);
+  document.getElementById("zielkoorddms").innerHTML = coordStringDMS(koords[0], koords[1]);
+  document.getElementById("zielkoordutm").innerHTML = getUTMCoordString(koords[0], koords[1]);
+
+  document.getElementById("dateandtime").innerHTML = dateOfYear.toLocaleDateString()
+    + " (Tag " + dayofyear.toString() + " des Jahres) um " + leadingZero(hh,2)
+    + ":" + leadingZero(mm,2) + " Uhr";
+  document.getElementById("azimutheight").innerHTML = resultarray[2].toFixed(2).toString().replace(".",",") + "° / "
+                                                    + resultarray[3].toFixed(2).toString().replace(".",",") + "°";
+} //calcSunPosition
+
+
+//-------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------
+
+
+// Eventhandler: Wird aufgerufen, wenn sich der Zustand der Radiobuttons zur Auswahl des Eingabeformats ändert.
+// Dadurch wird daas jeweilige <div> sichtbar geschaltet und alle anderen unsichtbar.
+function eingabeformatChange() {
+
+  var inp = document.getElementsByName("ef"); //Eingabeformat-Radiobuttons
+  var idname, disp;
+
+  for (var i=0; i < inp.length; i++) { //Schleife über alle Radiobuttons
+    idname = "quellkoord" + i.toString(); //id des jeweiligen Containers
+    if (inp[i].checked) {
+      disp = "inherit";
+    } else {
+      disp = "none";
+    }
+    document.getElementById(idname).style.display = disp; //(un)sichtbarkeit zuweisen
+  } //for
+
+} //eingabeformatChange
+
+//-----------------------------------------------------------------------------------------
+
+// Tauscht im übergebenen String aus und gibt als Funktionswert das Ergebnis zurück:
+// - Komma => Punkt
+// - Doppelte Leerzeichen => Einzelne Leerzeichen
+// - Gradzeichen, Minutenzeichen, Anführungszeichen werden entfernt
+// - Leerzeichen am Anfang und Ende werden entfernt
+// Rückgabe als Upppercase-Ausdruck.
+function replacer(arg) {
+
+  var erg = arg.replace(/,/g, ".").replace(/°/g, "").replace(/'/g,"");
+  erg = erg.replace(/\"/g,"")
+
+  //Doppelte Leerzeichen entfernen
+  while (erg.indexOf("  ") >= 0) {
+    erg = erg.replace("  "," ");
+  }
+  return erg.toUpperCase().trim();
+
+} //replacer
+
+//-----------------------------------------------------------------------------------------
+
+// inp: Erwartet einen String mit führendem Buchstaben N, S, W oder E, gefolgt von einer
+//      Zahl mit oder ohne Dezimalstellen.
+// isLatitude: true, wenn übergebener Wert Breitengrad ist (N/S), false sonst.
+// Rückgabe: Zahlenwert, bei S oder W mit Vorzeichen "-"
+// Bei falschem Format wird -1000 zurückgegeben.
+// Bei falschem Zahlenwert gibt es folgende Rückgabewerte:
+// bei "N" und Wert >  90: -1001
+// bei "S" und Wert >  90: -1002
+// bei "E" und Wert > 180: -1003
+// bei "W" und Wert < 180: -1004
+function splitCharAndValue(inp, isLatitude) {
+
+  inp = replacer(inp);
+
+  var result;
+  var c = inp.substring(0,1);
+  var inp = inp.substring(1);
+  var nWert;
+
+  if (isNaN(inp)) {
+    return -1000; //falsches Format
+  }
+
+  nWert = parseFloat(inp);
+
+  switch (c) {
+
+    case "N":
+      if ((nWert > 90) || (!isLatitude)) {
+        nWert = -1001;
+      }
+      break;
+
+    case "S":
+      if ((nWert > 90) || (!isLatitude)) {
+        nWert = -1002;
+      } else {
+        nWert *= -1;
+      }
+      break;
+
+    case "E":
+      if ((nWert > 180) || (isLatitude)) {
+        nWert = -1003;
+      }
+      break;
+
+    case "W":
+      if ((nWert > 180) || (isLatitude)) {
+        nWert = -1004;
+      } else {
+        nWert *= -1;
+      }
+      break;
+
+    default:
+      nWert = -1000;
+  }
+  return nWert;
+} //splitCharAndValue
+
+//-------------------------------------------------------------------------------------------
+
+// Zeigt die übergebenen Koordinaten in verschiedenen Formaten in den jeweiligen DIVs an.
+// Aktiviert außerdem den GoogleMaps-Button.
+// Die befüllten DIVs sind:
+// <div id="zielkoordmath"> = Mathematisch mit Vorzeichen, z.B. "50.12345 ; -1.67890"
+// <div id="zielkoorddez">  = Dezimalgrad, z.B. "N57.45678 W3.21098"
+// <div id="zielkoorddm">   = Grad und Minuten, z.B. "N57° 27.360' W3° 12.600'"
+// <div id="zielkoorddms">  = Grad, Minuten, Sekunden, z.B. N57° 27' 21" W3° 12' 35"
+// <div id="zielkoordutm">  = UTM-Koordinaten, z.B. "30 V 487399 6368167"
+function showAllCoordFormats(lat, lon) {
+
+  document.getElementById("zielkoordmath").innerHTML = lat.toFixed(5).toString() + " ; " + lon.toFixed(5).toString();
+  document.getElementById("zielkoorddez").innerHTML = coordStringD(lat, lon);
+  document.getElementById("zielkoorddm").innerHTML = coordStringDM(lat, lon);
+  document.getElementById("zielkoorddms").innerHTML = coordStringDMS(lat, lon);
+  document.getElementById("zielkoordutm").innerHTML = getUTMCoordString(lat, lon);
+
+  document.getElementById("showgooglemapbutton").removeAttribute("disabled"); //enable Button
+  //disable: document.getElementById("showgooglemapbutton").setAttribute("disabled","disabled");
+
+} //showAllCoordFormats
+
+//-------------------------------------------------------------------------------------------
+
+// Button "Koordianten umrechnen" bei "Eingabeformat: Dezimalgrad"
+// Prüft die übergebenen Werte auf korrektes Format und zeigt dann das Ergebnis in allen Formaten an.
+function krdCalcDeg(latdeg, londeg) {
+
+  var lat = splitCharAndValue(latdeg, true);
+  var lon = splitCharAndValue(londeg, false);
+
+  if (lat <= -1000) {
+    alert("Fehler beim Format des Breitengrads. (Muss mit N oder S beginnen, gefolgt von einer Zahl zwischen 0 und 90)");
+  } else {
+    if (lon <= -1000) {
+      alert("Fehler beim Format des Längengrads. (Muss mit E oder W beginnen, gefolgt von einer Zahl zwischen 0 und 180)");
+    } else {
+      showAllCoordFormats(lat, lon); //Prüfung war positiv => in allen Formaten anzeigen
+    }
+  }
+} //krdCalcDeg
+
+//-------------------------------------------------------------------------------------------
+
+// Button "Koordianten umrechnen" bei "Eingabeformat: Grad + Minuten"
+// Prüft die übergebenen Werte auf korrektes Format und zeigt dann das Ergebnis in allen Formaten an.
+function krdCalcDegMin(latdeg, latmin, londeg, lonmin) {
+
+  var lat = splitCharAndValue(latdeg, true);
+  var lon = splitCharAndValue(londeg, false);
+
+  latmin = replacer(latmin);
+  lonmin = replacer(lonmin);
+
+  if (lat <= -1000) {
+    alert("Fehler beim Format des Breitengrads. (Muss mit N oder S beginnen, gefolgt von einer Zahl zwischen 0 und 90)");
+    return;
+  }
+  if (lon < -1000) {
+    alert("Fehler beim Format des Längengrads. (Muss mit E oder W beginnen, gefolgt von einer Zahl zwischen 0 und 180)");
+    return;
+  }
+  if ((isNaN(latmin)) || (parseFloat(latmin) < 0) || (parseFloat(latmin) >= 60)) {
+    alert("Fehler beim Format des Breitengrads: Minutenanteil muss eine Zahl zwischen 0 und 59,999 sein.");
+    return;
+  }
+  if ((isNaN(lonmin)) || (parseFloat(lonmin) < 0) || (parseFloat(lonmin) >= 60)) {
+    alert("Fehler beim Format des Längengrads: Minutenanteil muss eine Zahl zwischen 0 und 59,999 sein.");
+    return;
+  }
+
+  if (lat < 0) {
+    lat -= parseFloat(latmin) / 60;
+  } else {
+    lat +=  parseFloat(latmin) / 60;
+  }
+  if (lon < 0) {
+    lon -= parseFloat(lonmin) / 60;
+  } else {
+    lon += parseFloat(lonmin) / 60;
+  }
+
+  showAllCoordFormats(lat, lon); //Prüfung war positiv => in allen Formaten anzeigen
+
+} //krdCalcDegMin
+
+//-------------------------------------------------------------------------------------------
+
+// Button "Koordianten umrechnen" bei "Eingabeformat: Grad, Minuten, Sekunden"
+// Prüft die übergebenen Werte auf korrektes Format und zeigt dann das Ergebnis in allen Formaten an.
+function krdCalcDegMinSec(latdeg, latmin, latsec, londeg, lonmin, lonsec) {
+
+  var lat = splitCharAndValue(latdeg, true);
+  var lon = splitCharAndValue(londeg, false);
+
+  latmin = replacer(latmin);
+  latsec = replacer(latsec);
+  lonmin = replacer(lonmin);
+  lonsec = replacer(lonsec);
+
+  if (lat <= -1000) {
+    alert("Fehler beim Format des Breitengrads. (Muss mit N oder S beginnen, gefolgt von einer Zahl zwischen 0 und 90)");
+    return;
+  }
+  if (lon < -1000) {
+    alert("Fehler beim Format des Längengrads. (Muss mit E oder W beginnen, gefolgt von einer Zahl zwischen 0 und 180)");
+    return;
+  }
+  if ((isNaN(latmin)) || (parseFloat(latmin) < 0) || (parseFloat(latmin) >= 60)) {
+    alert("Fehler beim Format des Breitengrads: Minutenanteil muss eine Zahl zwischen 0 und 59,999 sein.");
+    return;
+  }
+  if ((isNaN(lonmin)) || (parseFloat(lonmin) < 0) || (parseFloat(lonmin) >= 60)) {
+    alert("Fehler beim Format des Längengrads: Minutenanteil muss eine Zahl zwischen 0 und 59,999 sein.");
+    return;
+  }
+  if ((isNaN(latsec)) || (parseFloat(latsec) < 0) || (parseFloat(latsec) >= 60)) {
+    alert("Fehler beim Format des Breitengrads: Sekundenanteil muss eine Zahl zwischen 0 und 59,999 sein.");
+    return;
+  }
+  if ((isNaN(lonsec)) || (parseFloat(lonsec) < 0) || (parseFloat(lonsec) >= 60)) {
+    alert("Fehler beim Format des Längengrads: Sekundenanteil muss eine Zahl zwischen 0 und 59,999 sein.");
+    return;
+  }
+
+  if (lat < 0) {
+    lat = lat - parseFloat(latmin) / 60 - parseFloat(latsec) / 3600;
+  } else {
+    lat = lat + parseFloat(latmin) / 60 + parseFloat(latsec) / 3600;
+  }
+  if (lon < 0) {
+    lon = lon - parseFloat(lonmin) / 60 - parseFloat(lonsec) / 3600;
+  } else {
+    lon = lon + parseFloat(lonmin) / 60 + parseFloat(lonsec) / 3600;
+  }
+
+  showAllCoordFormats(lat, lon); //Prüfung war positiv => in allen Formaten anzeigen
+
+} //krdCalcDegMinSec
+
+//-------------------------------------------------------------------------------------------
+
+// Button "Koordianten umrechnen" bei "Eingabeformat: Koordinaten im UTM-Format"
+// Prüft die übergebenen Werte auf korrektes Format und zeigt dann das Ergebnis in allen Formaten an.
+function krdCalcUTM(zone, field, easting, northing) {
+
+  var bSuedHalbkugel = ((field.charCodeAt(0)) < 78); //true auf Suedhalbkugel, false sonst
+  var nZone, nNorthing, nEasting;
+  var breitedez, laengedez;
+  var latlon = new Array(2);
+
+  if ((isNaN(zone)) || (parseInt(zone) < 1) || (parseInt(zone) > 60)) {
+    alert("Fehler beim UTM-Format: Die Zone muss eine Zahl zwischen 1 und 60 sein.");
+    return;
+  } else {
+    nZone = parseInt(zone);
+  }
+  if ((isNaN(easting)) || (parseFloat(easting) > 9999999)) {
+    alert("Fehler beim UTM-Format: Rechtswert (easting) ist entweder nicht numerisch oder zu groß.");
+    return;
+  } else {
+    nEasting = parseFloat(easting);
+  }
+  if ((isNaN(northing)) || (parseFloat(northing) > 9999999)) {
+    alert("Fehler beim UTM-Format: Hochwert (northing) ist entweder nicht numerisch oder zu groß.");
+  } else {
+    nNorthing = parseFloat(northing);
+  }
+
+  // Umrechnung UTM => latlon
+  utmToLatLon(nEasting, nNorthing, nZone , bSuedHalbkugel , latlon);
+
+  showAllCoordFormats(latlon[0], latlon[1]); //in allen Formaten anzeigen
+
+} //krdCalcUTM
+
+//-------------------------------------------------------------------------------------------
+
+// Button "Koordianten umrechnen" bei "Eingabeformat: Dezimalgrad in einem Feld"
+// Prüft die übergebenen Werte auf korrektes Format und zeigt dann das Ergebnis in allen Formaten an.
+function krdCalcDeg1Field(inp) {
+
+  var sDezimal = replacer(inp);
+  var sArray = sDezimal.split(" ");
+  if (sArray.length != 2) {
+    alert("Koordinatenangaben im Dezimalformat müssen aus zwei durch Leerzeichen getrennten Angaben bestehen.");
+    return;
+  }
+  krdCalcDeg(sArray[0], sArray[1]); //Aufruf der übergeordneten Funktion mit zwei Eingabewerten
+
+} //krdCalcDeg1Field
+
+//-------------------------------------------------------------------------------------------
+
+// Button "Koordianten umrechnen" bei "Eingabeformat: Grad + Minuten in einem Feld"
+// Prüft die übergebenen Werte auf korrektes Format und zeigt dann das Ergebnis in allen Formaten an.
+function krdCalcDegMin1Field(inp) {
+
+  var sInp = replacer(inp);
+  var sArray = sInp.split(" ");
+  if (sArray.length != 4) {
+    alert("Koordinatenangaben im Format Grad + Minute müssen aus vier durch Leerzeichen getrennten Angaben bestehen.");
+    return;
+  }
+  krdCalcDegMin(sArray[0], sArray[1], sArray[2], sArray[3]); //Aufruf der übergeordneten Funktion mit 4 Eingabewerten
+
+} //krdCalcDegMin1Field
+
+//-------------------------------------------------------------------------------------------
+
+// Button "Koordianten umrechnen" bei "Eingabeformat: UTM in einem Feld"
+// Prüft die übergebenen Werte auf korrektes Format und zeigt dann das Ergebnis in allen Formaten an.
+function krdCalcUTM1Field(inp) {
+
+  var sInp = replacer(inp);
+  var sArray = sInp.split(" ");
+  if (sArray.length != 4) {
+    alert("Koordinatenangaben im UTM-Format müssen aus vier durch Leerzeichen getrennten Angaben bestehen.");
+    return;
+  }
+  krdCalcUTM(sArray[0], sArray[1], sArray[2], sArray[3]); //Aufruf der übergeordneten Funktion mit 4 Eingabewerten
+
+} //krdCalcUTM1Field
+
+//-------------------------------------------------------------------------------------------
+
+// Button "Koordianten umrechnen" bei "Eingabeformat: GoogleMaps-Link"
+// Prüft die übergebenen Werte auf korrektes Format und zeigt dann das Ergebnis in allen Formaten an.
+function krdCalcGoogleMapsLink(sURL) {
+
+  var n = sURL.indexOf("/@"); //danach kommt die Koordinatenangabe in einem GoogleMaps-Link
+  var arTeile;
+  var breit, lang;
+  var sOrigUrl = sURL;
+
+  if (n > -1)
+  {
+    sURL = sURL.substr(n + 2); // "/@" und alles davor löschen
+    arTeile = sURL.split(","); // Es folgen Breitengrad, Längengrad und Zusatzangaben, jeweils durch Komma getrennt
+    if (arTeile.length >= 2)   // Es müssen hierdurch mindestens 3 Teile entstehen
+    {
+      breit = parseFloat(arTeile[0]);
+      lang = parseFloat(arTeile[1]);
+      if ((breit >= -90) && (breit <= 90) && (lang >= -180) && (lang <= 180)) {
+        showAllCoordFormats(breit, lang);
+        return; //Funktion beenden, sonst würde Fehler-Alert ausgegeben
+      }
+    }
+  }
+  alert("Aus der übergebenen Adresse konnten keine Koordinaten ermittelt werden. Adresse war:\n\n" + sOrigUrl);
+} //krdCalcGoogleMapsLink
+
+//-------------------------------------------------------------------------------------------
+
+// Grafischer Tagesverlauf des Sonnenstands
+// Parameter:
+// sCanvasName: id des <canvas>-Elements (als String)
+// sKrdDez und sKrdDM: Koordinatenstring in Dezimal- oder Grad-Minuten-Format. Genau einer der Parameter muss einen
+//                     Wert enthalten, sonst Fehler
+// sTimezone: Zeitzone als Zahl zwischen -12 und 12;  Nachkommastellen erlaubt (z.B.: -9.5)
+// bHelplines: bei true werden Hilfslinien eingeblendet.
+function showSunsetYear(sCanvasName, sKrdDez, sKrdDM, sTimezone, bHelplines) {
+
+  const xOffset = 50;
+  const yOffset = 622;
+  const stundenHoehe = 25; //"Höhe" einer Stunde in Pixel auf der Y-Achse
+  const jahresBreite = 720; //so viele Pixel für das gesamte Jahr
+
+  /*
+  const pixelProGrad_large = 3;
+  const gradGrenze_large = 90;
+  const pixelProGrad_small = 4;
+  const gradGrenze_small = 70;
+  const gradSchritt = 10;
+  const pixelProStunde = 30;
+  var gradGrenze, pixelProGrad;*/
+
+  var breit, lang;
+  var koords = new Array(2);
+  var resultarray = new Array(4);
+  var zone = parseFloat(sTimezone);
+  var x, y0, y1;
+
+  sKrdDez = sKrdDez.toUpperCase().replace(/,/g, ".");
+  sKrdDM = sKrdDM.toUpperCase().replace(/,/g, ".");
+
+  if ((sKrdDez == "") && (sKrdDM == "")) {
+    alert("Fehler: Koordinaten des Standpunkts: Bitte eines der beiden Felder füllen.");
+    return;
+  }
+  if ((sKrdDez != "") && (sKrdDM != "")) {
+    alert("Fehler: Koordinaten des Standpunkts: Bitte nur eines der beiden Felder füllen.");
+    return;
+  }
+  if (sKrdDez != "") {
+    sError = getCoordsFromDezCoordString(sKrdDez, koords);
+    if (sError != "") {
+      alert("Fehler bei Koordinaten des Standpunkts: " + sError);
+      return;
+    }
+  } else {
+    sError = getCoordsFromCoordString(sKrdDM, koords);
+    if (sError != "") {
+      alert("Fehler bei Koordinaten des Standpunkts: " + sError);
+      return;
+    }
+  }
+  breit = parseFloat(koords[0]);
+  lang = parseFloat(koords[1]);
+
+  if (isNaN(breit) || isNaN(lang)) {
+    alert("Die eingegebenen Koordinaten sind ungültig.");
+    return;
+  }
+
+  var canvas = document.getElementById(sCanvasName);
+  if (canvas.getContext) {
+
+    var bild = canvas.getContext('2d');
+    var months = ["Jan","Feb","Mar","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+    var m;
+
+    bild.lineWidth = 1;
+    bild.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Zeichensatz einstellen
+    bild.font="14px Courier";
+    bild.textAlign="center";
+
+    // X-Achse
+    bild.beginPath();
+    bild.moveTo(xOffset, yOffset);
+    bild.strokeStyle = "rgb(0,0,0)";
+    bild.lineTo(xOffset + jahresBreite, yOffset);
+    bild.stroke();
+
+    // X-Achsen-Einteilungen und Beschriftung
+    for (i=0; i<=12; i++) {
+      bild.beginPath();
+      bild.moveTo(xOffset + (i * 60), yOffset);
+      bild.lineTo(xOffset + (i * 60), yOffset + 10);
+      bild.stroke();
+
+      //Beschriftung mit Monatsname
+      if (i > 0) {
+        m = months[i-1];
+        bild.strokeText(months[i-1], xOffset + 60*(i-1) + 30, yOffset + 15);
+      }
+    }
+
+    //Y-Achse
+    bild.beginPath();
+    bild.moveTo(xOffset, yOffset);
+    bild.lineTo(xOffset, yOffset - 24 * stundenHoehe );
+    bild.stroke();
+    bild.textAlign="right";
+    for (i=0; i<=24; i++) {
+      bild.beginPath();
+      bild.moveTo(xOffset, yOffset - i * stundenHoehe);
+      bild.lineTo(xOffset - 5, yOffset - i * stundenHoehe);
+      bild.stroke();
+
+      m = i.toString();
+      if (i < 24)
+        bild.strokeText(m, xOffset - 7, yOffset - i * stundenHoehe + 4);
+    }
+    bild.textAlign="left";
+    bild.strokeText("Stunde (Uhrzeit)", 5, yOffset - 24 * stundenHoehe - 5);
+
+    // gestrichelte Hilfslinien
+    if (bHelplines) {
+      bild.setLineDash([3, 10]);
+      bild.strokeStyle = "rgb(96,96,96)";
+      for (i=1; i<=24; i++) {
+        bild.beginPath();
+        bild.moveTo(xOffset, yOffset - i * stundenHoehe);
+        bild.lineTo(xOffset + jahresBreite, yOffset - i * stundenHoehe);
+        bild.stroke();
+      }
+      bild.setLineDash([6,6]);
+      for (i=0; i<=12; i++) {
+        bild.beginPath();
+        bild.moveTo(xOffset + (i * 60), yOffset);
+        bild.lineTo(xOffset + (i * 60), yOffset - 24 * stundenHoehe);
+        bild.stroke();
+      }
+      bild.setLineDash([]);
+      bild.strokeStyle = "rgb(0,0,0)";
+    }
+
+    bild.strokeStyle = "rgb(255,0,0)";
+    for (d=1; d<=360; d+=1) {
+      // zum Zeichnen:
+      // x-Koordinate = xOffset + d * (jahresBreite / 360)    mit d = Tag [1..365]
+      // y-Koordinate = yOffset - t * stundenHoehe            mit t = Zeit [0..24[
+
+      CalculateSun(lang, breit, d, zone, 12, resultarray);
+      /*
+      Fallunterscheidung:
+        - aufgang > untergang => keine Anzeige (Dauernacht)
+        - aufgang < 0 => aufgang :=0 (Dauertag)
+        - untergang > 24 => untergang := 24 (Dauertag)
+        - sonst: normal
+
+      */
+      if (resultarray[1] > 24) {
+          resultarray[1] = 24;
+      }
+      if (resultarray[0] < 0) {
+        resultarray[0] = 0;
+      }
+      if (resultarray[0] <= resultarray[1]) { //ansonsten ist Dauernacht
+        y0 = Math.round(yOffset - resultarray[0] * stundenHoehe);
+        y1 = Math.round(yOffset - resultarray[1] * stundenHoehe);
+        x = xOffset + d * (jahresBreite / 360)
+        bild.beginPath();
+        bild.moveTo(x, y0);
+        bild.lineTo(x, y1);
+        bild.stroke();
+      }
+    }
+
+  } //canvas.getContext
+
+} //showSunsetYear
+
+//------------------------------------------------------------------------------------------
+
+// Canvas löschen durch Zeichnen eines ausgefüllten Rechtecks
+function clearCanvas(sCanvasName) {
+  var canvas = document.getElementById(sCanvasName);
+  var bild = canvas.getContext('2d');
+  bild.fillStyle = "rgb(240,240,255)";
+  bild.fillRect(0,0,canvas.width,canvas.height);
+} //clearCanvas
+
+//------------------------------------------------------------------------------------------
+
+// Tagesverlauf des Sonnenstands grafisch darstellen
+// Parameter:
+// sCanvasName: id des <canvas>-Elements (als String)
+// sKrdDez und sKrdDM: Koordinatenstring in Dezimal- oder Grad-Minuten-Format. Genau einer der Parameter muss einen
+//                     Wert enthalten, sonst Fehler
+// sDate: Datum im Format dd.mm.yyyy
+// sTimezone: Zeitzone als Zahl zwischen -12 und 12;  Nachkommastellen erlaubt (z.B.: -9.5)
+// b70deg: Anzeige erfolgt mit 70°-Skala bei true, oder 90°-Skala bei false
+// bHelplines: bei true werden Hilfslinien eingeblendet.
+function showSunOrbit(sCanvasName, sKrdDez, sKrdDM, sDate, sTimezone, b70deg, bHelplines) {
+
+  const xOffset = 50;
+  const yOffset = 325;
+  const stundenHoehe = 20; //"Höhe" einer Stunde in Pixel auf der Y-Achse
+  const pixelProGrad_large = 3;
+  const gradGrenze_large = 90;
+  const pixelProGrad_small = 4;
+  const gradGrenze_small = 70;
+  const gradSchritt = 10;
+  const pixelProStunde = 30;
+
+  var dateParts = sDate.split(".");
+  var gradGrenze, pixelProGrad;
+  var dateOfYear;
+  var dayofyear;
+  var zone = parseFloat(sTimezone);
+  var koords = new Array(2);
+
+  if (b70deg == true) {
+    gradGrenze = gradGrenze_small;
+    pixelProGrad = pixelProGrad_small;
+  } else {
+    gradGrenze = gradGrenze_large;
+    pixelProGrad = pixelProGrad_large;
+  }
+
+  sKrdDez = sKrdDez.toUpperCase().replace(/,/g, ".");
+  sKrdDM = sKrdDM.toUpperCase().replace(/,/g, ".");
+  if ((sKrdDez == "") && (sKrdDM == "")) {
+    alert("Fehler: Koordinaten des Standpunkts: Bitte eines der beiden Felder füllen.");
+    return;
+  }
+  if ((sKrdDez != "") && (sKrdDM != "")) {
+    alert("Fehler: Koordinaten des Standpunkts: Bitte nur eines der beiden Felder füllen.");
+    return;
+  }
+  if (sKrdDez != "") {
+    sError = getCoordsFromDezCoordString(sKrdDez, koords);
+    if (sError != "") {
+      alert("Fehler bei Koordinaten des Standpunkts: " + sError);
+      return;
+    }
+  } else {
+    sError = getCoordsFromCoordString(sKrdDM, koords);
+    if (sError != "") {
+      alert("Fehler bei Koordinaten des Standpunkts: " + sError);
+      return;
+    }
+  }
+
+  if (dateParts.length != 3) {
+    alert("Fehler: Datum muss im Format dd.mm.jjjj angegeben werden.");
+    return;
+  }
+  dateOfYear = new Date(dateParts[2], dateParts[1] - 1, dateParts[0]);
+  dayofyear = getDayOfYear(dateOfYear);
+
+  var breit = parseFloat(koords[0]);
+  var lang = parseFloat(koords[1]);
+
+  if (isNaN(breit) || isNaN(lang) || isNaN(dayofyear)) {
+    alert("Die eingegebenen Koordinaten oder das Datum sind ungültig.");
+    return;
+  }
+
+  var canvas = document.getElementById(sCanvasName);
+  if (canvas.getContext) {
+
+    var bild = canvas.getContext('2d');
+    bild.lineWidth = 1;
+    bild.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Zeichensatz einstellen
+    bild.font="14px Courier";
+    bild.textAlign="center";
+
+    // X-Achse
+    bild.beginPath();
+    bild.moveTo(xOffset, yOffset);
+    bild.strokeStyle = "rgb(0,0,0)";
+    bild.lineTo(xOffset + 720, yOffset);
+    bild.stroke();
+
+    //X-Achse: Einteilung und Beschriftung
+    bild.textAlign="middle";
+
+    for (x=1; x<=24; x++) {
+      bild.beginPath();
+      bild.moveTo(xOffset + pixelProStunde * x, yOffset - 5);
+      bild.lineTo(xOffset + pixelProStunde * x, yOffset + 5);
+      bild.stroke();
+      m = x.toString();
+      bild.strokeText(m, xOffset + pixelProStunde * x, yOffset + 15);
+    }
+    bild.textAlign="right";
+    bild.strokeText("Uhrzeit", 785-5, yOffset - 5);
+
+    //Y-Achse
+    bild.beginPath();
+    bild.moveTo(xOffset, yOffset - gradGrenze * pixelProGrad);
+    bild.lineTo(xOffset, yOffset + gradGrenze * pixelProGrad);
+    bild.stroke();
+    bild.textAlign="left";
+    bild.strokeText("Höhe der Sonne", 5, yOffset - gradGrenze * pixelProGrad - 20);
+
+    //Y-Achse Einteilung und Beschriftung
+    var grad = -gradGrenze;
+    bild.textAlign="right";
+    while (grad <= gradGrenze) {
+
+      //kleiner waagrechter Strich
+      bild.beginPath();
+      bild.moveTo(xOffset, yOffset - grad * pixelProGrad);
+      bild.lineTo(xOffset - 5, yOffset - grad * pixelProGrad);
+      bild.stroke();
+
+      //Beschriftung
+      m = grad.toString() + "°";
+      bild.strokeText(m, xOffset - 7, yOffset - grad * pixelProGrad + 4);
+
+      grad += gradSchritt;
+    } //while
+
+    // gestrichelte Hilfslinien
+    if (bHelplines) {
+
+      bild.setLineDash([2,6]);
+
+      grad = -gradGrenze;
+      while (grad <= gradGrenze) {
+        bild.beginPath();
+        bild.moveTo(xOffset, yOffset - grad * pixelProGrad);
+        bild.lineTo(xOffset + 24 * pixelProStunde, yOffset - grad * pixelProGrad);
+        bild.stroke();
+        grad += gradSchritt;
+      }
+
+      bild.setLineDash([2,6]);
+      for (i=1; i<=24; i++) {
+        bild.beginPath();
+        bild.moveTo(xOffset + (i * pixelProStunde ), yOffset - pixelProGrad * gradGrenze);
+        bild.lineTo(xOffset + (i * pixelProStunde ), yOffset + pixelProGrad * gradGrenze);
+        bild.stroke();
+      }
+
+    }
+    bild.strokeStyle = "rgb(0,0,0)";
+    bild.setLineDash([]);
+
+    //X-Koordinate = xOffset + pixelProStunde * t
+    //Y-Koordinate = yOffset - pixelProGrad   * grad
+
+    var resultarray = new Array(4);
+    var t = 0;
+    var grad;
+    var cnt = 0;
+
+    bild.strokeStyle = "rgb(255,0,0)";
+    bild.lineWidth = 3;
+    while (t < 24) {
+
+      CalculateSun(lang, breit, dayofyear, zone, t, resultarray);
+      grad = resultarray[3];
+
+      if (grad < -gradGrenze) {
+        grad = -gradGrenze;
+      }
+      if (grad > gradGrenze) {
+        grad = gradGrenze;
+      }
+
+      if (cnt == 0) {
+        bild.beginPath();
+        bild.moveTo(xOffset + pixelProStunde * t, yOffset - pixelProGrad * grad);
+      } else {
+        bild.lineTo(xOffset + pixelProStunde * t, yOffset - pixelProGrad * grad);
+      }
+
+      cnt++;
+      t += 1/15;
+    } //while
+
+    bild.stroke();
+
+  } //canvas-Kontext vorhanden
+
+} //showSunOrbit
+
+//------------------------------------------------------------------------------------------
+
+

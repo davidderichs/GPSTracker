@@ -43,6 +43,7 @@ import kotlin.Unit;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener, LocationListener, SensorEventListener {
 
+    LinearLayout linearLayout_main_Content;
     LinearLayout linearLayout_standard_content;
     LinearLayout linearLayout_Calibration;
     LinearLayout linearLayout_Settings;
@@ -101,6 +102,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         df = new DecimalFormat("#.000");
 
 
+        linearLayout_main_Content = (LinearLayout) findViewById(R.id.linearLayout_main_Content);
         linearLayout_standard_content = (LinearLayout) findViewById(R.id.linearLayout_standard_content);
         linearLayout_Calibration = (LinearLayout) findViewById(R.id.linearLayout_Calibration);
         linearLayout_Settings = (LinearLayout) findViewById(R.id.linearLayout_Settings);
@@ -399,18 +401,25 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     }
 
     private void drawCanvas() {
-        Bitmap bitmap = Bitmap.createBitmap(100, 700, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(Color.BLACK);
-        canvas.drawLine(25, 0, 25, 700, paint);
-        canvas.drawLine(50, 0, 50, 700, paint);
-        canvas.drawLine(75, 0, 75, 700, paint);
+        try{
+            int bitmapHeight = linearLayout_main_Content.getHeight();
+            int bitmapWidth = linearLayout_main_Content.getWidth();
+            int quarterWidth = bitmapWidth / 4;
+            Bitmap bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888);
 
-        imageView_Route.draw(canvas);
-        imageView_Route.setImageBitmap(bitmap);
+            Canvas canvas = new Canvas(bitmap);
+            Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            paint.setColor(Color.GRAY);
+            canvas.drawLine(quarterWidth, 0, quarterWidth, bitmapHeight, paint);
+            canvas.drawLine(quarterWidth*2, 0, quarterWidth*2, bitmapHeight, paint);
+            canvas.drawLine(quarterWidth*3, 0, quarterWidth*3, bitmapHeight, paint);
+
+            imageView_Route.draw(canvas);
+            imageView_Route.setImageBitmap(bitmap);
+        } catch (Exception e){
+            Log.d("GPSReceiver", e.getMessage());
+        }
     }
-
 
     // Onclick Events
     @Override
