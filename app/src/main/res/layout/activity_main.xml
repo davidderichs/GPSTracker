@@ -65,7 +65,16 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom"
                 app:bar_color="@android:color/holo_green_light" />
-
+            <Button
+                android:id="@+id/resetCalibration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@android:color/holo_green_light"
+                android:minWidth="350px"
+                android:shadowColor="@color/white"
+                android:text="reset"
+                android:textColor="@color/white"
+                android:textSize="24sp" />
         </LinearLayout>
 
         <LinearLayout
@@ -97,6 +106,19 @@
                 android:text="Height"
                 android:textColor="@color/white"
                 android:textSize="24sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/linearLayout_route"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginBottom="50dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+            <ImageView
+                android:id="@+id/imageView_route"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
         </LinearLayout>
     </LinearLayout>
 

@@ -3,10 +3,10 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
-        android:id="@+id/action_info"
+        android:id="@+id/action_route"
         android:enabled="true"
         android:icon="@android:drawable/ic_dialog_info"
-        android:title="@string/action_info"
+        android:title="@string/action_route"
         app:showAsAction="ifRoom"></item>
     <item
         android:id="@+id/action_settings"
