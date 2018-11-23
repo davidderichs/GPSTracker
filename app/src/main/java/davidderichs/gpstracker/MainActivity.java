@@ -72,6 +72,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     float height_offset;
 
     LinkedList<String> route = new LinkedList<>();
+    LinkedList<String> routeUTM = new LinkedList<>();
 
     private final int ACCESS_FINE_LOCATION=1;
 
@@ -95,6 +96,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         showPhoneStatePermissionGPS();
 
         this.route.clear();
+        this.routeUTM.clear();
 
         height_offset = 0.0f;
         calibrationActive = false;
@@ -180,7 +182,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     }
 
     private void saveGPSInformationToFile(Location location){
-        Log.d("GPSReceiver", "Trying to save GPS Data");
         try {
             OutputStreamWriter outputStreamWriter = new OutputStreamWriter(this.openFileOutput("GPSTracks.csv", Context.MODE_PRIVATE));
 
@@ -386,6 +387,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private void navigationRouteClicked(){
         this.createGPSRouteFromFile(this);
+        this.convertGPSRouteToUTMRoute();
 
         if(linearLayout_Route.getVisibility() == View.GONE){
             linearLayout_Route.setVisibility(View.VISIBLE);
@@ -393,10 +395,22 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             linearLayout_Calibration.setVisibility(View.GONE);
             linearLayout_standard_content.setVisibility(View.GONE);
             drawCanvas();
+            drawRoute();
 
         } else {
             linearLayout_Settings.setVisibility(View.GONE);
             linearLayout_standard_content.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void convertGPSRouteToUTMRoute(){
+
+    }
+
+    private void drawRoute(){
+        Log.d("GPSReceiver", "Drawing Route on Canvas");
+        for(String routeEntry : this.route){
+            Log.d("GPSReceiver", routeEntry);
         }
     }
 
