@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?><gpx xmlns="http://www.topografix.com/GPX/1/1" creator="MapSource 6.15.5" version="1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd"><trk>
+<name>My Route</name><trkseg>
+	<trkpt lon='52.51277' lat='13.27538'></trkpt>
+	<trkpt lon='52.51144' lat='13.2747'></trkpt>
+	<trkpt lon='52.51166' lat='13.27343'></trkpt>
+	<trkpt lon='52.51186' lat='13.27247'></trkpt>
+	<trkpt lon='52.51268' lat='13.27283'></trkpt>
+	<trkpt lon='52.51386' lat='13.27337'></trkpt>
+	<trkpt lon='52.51357' lat='13.2748'></trkpt>
+	<trkpt lon='52.51277' lat='13.27538'></trkpt>
+</trkseg></trk></gpx>

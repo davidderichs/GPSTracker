@@ -112,7 +112,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         height_offset = 0.0f;
         calibrationActive = false;
 
-        df = new DecimalFormat("#.000");
+        df = new DecimalFormat("#.0000");
 
 
         linearLayout_main_Content = (LinearLayout) findViewById(R.id.linearLayout_main_Content);
@@ -316,17 +316,20 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private void saveRouteToGPX() {
         String header = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?><gpx xmlns=\"http://www.topografix.com/GPX/1/1\" creator=\"MapSource 6.15.5\" version=\"1.1\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"  xsi:schemaLocation=\"http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd\"><trk>\n";
-        String name = "<name>" + "" + "</name><trkseg>\n";
+        String name = "<name>" + "My Route" + "</name><trkseg>\n";
 
         String segments = "";
 
+        this.createGPSRouteFromFile(this);
+
         Iterator routeIterator = this.GPS_Route.iterator();
+        Log.d("GPSReceiver", "route Size: " + this.GPS_Route.size());
         while (routeIterator.hasNext()){
             String routeItem = (String) routeIterator.next();
             String[] routeInfo = routeItem.split(",");
-            String latitude = routeInfo[0];
-            String longitude = routeInfo[1];
-            segments += "<trkpt lat=\"" + latitude + "\" lon=\"" + longitude + "\"></trkpt>\n";
+            String longitude = routeInfo[0];
+            String latitude = routeInfo[1];
+            segments += "<trkpt lat='" + latitude + "' lon='" + longitude + "'></trkpt>";
         }
 
         String footer = "</trkseg></trk></gpx>";
@@ -340,7 +343,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             outputStreamWriter.append(footer);
             outputStreamWriter.flush();
             outputStreamWriter.close();
-            Log.d("GPSReceiver", "Saved to GPX");
+            Log.d("GPSReceiver", "Saved GPX");
+            Log.d("GPSReceiver", "File Location: " + this.getFilesDir().getAbsolutePath());
         } catch (FileNotFoundException e) {
 
             e.printStackTrace();
