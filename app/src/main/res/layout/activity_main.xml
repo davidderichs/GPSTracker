@@ -87,24 +87,13 @@
             android:visibility="gone">
 
             <Button
-                android:id="@+id/getGPS"
+                android:id="@+id/button_saveRouteToGPS"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@android:color/holo_green_light"
                 android:minWidth="350px"
                 android:shadowColor="@color/white"
-                android:text="GPS"
-                android:textColor="@color/white"
-                android:textSize="24sp" />
-
-            <Button
-                android:id="@+id/getPressure"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@android:color/holo_green_light"
-                android:minWidth="350px"
-                android:shadowColor="@color/white"
-                android:text="Height"
+                android:text="Save Route to GPX File"
                 android:textColor="@color/white"
                 android:textSize="24sp" />
         </LinearLayout>
