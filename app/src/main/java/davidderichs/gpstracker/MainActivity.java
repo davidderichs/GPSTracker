@@ -27,160 +27,230 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+
 import com.ramotion.fluidslider.FluidSlider;
-import java.io.BufferedReader;
-import java.io.FileNotFoundException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
+
 import java.text.DecimalFormat;
 import java.util.Iterator;
 import java.util.LinkedList;
 import kotlin.Unit;
 
+/**
+ * Main Activity is used to control the Apps behaviour
+ */
 public class MainActivity extends AppCompatActivity implements View.OnClickListener, LocationListener, SensorEventListener {
 
+    // Layouts are used to change between different Views.
     LinearLayout linearLayout_main_Content;
     LinearLayout linearLayout_standard_content;
     LinearLayout linearLayout_Calibration;
     LinearLayout linearLayout_Settings;
     LinearLayout linearLayout_Route;
 
+    // ImageView is used to display a Canvas, which is used to draw UTM based Routes
     ImageView imageView_Route;
 
+    // TextViews are used to display current location information.
     TextView textView_latitude;
     TextView textView_longitude;
     TextView textView_height;
     TextView textView_recalibrated_height;
     TextView textView_speed;
 
+    // The App uses a Bottom Navigation to changed to different Views.
     BottomNavigationView navigation_bottomNavigation;
     View button_settings;
     View button_info;
     View button_calibrate;
 
+    // These are Buttons stored on Settings-View
+    // They can be sued to Calibrate the height and save the current Route to GPX files.
+    Button button_saveRouteToGPX;
+    Button button_resetCalibration;
+    FluidSlider slider_SetNewCalibratedHeight;
+
+    // Permission and Calibration are critical for the App to function successfully
     boolean permissionsGranted;
     boolean calibrationActive;
 
+    // These values are Used to store all current location information
     double longitude;
     double latitude;
     double speed;
     float height;
     float height_offset;
 
+    // The current route is first stored into GPS_Route and can be converted to UTM_Route
     LinkedList<String> GPS_Route = new LinkedList<String>();
     LinkedList<UTMRef> UTM_Route = new LinkedList<UTMRef>();
 
     private final int ACCESS_FINE_LOCATION=1;
 
-    Button button_saveRouteToGPX;
-    Button button_resetCalibration;
-    FluidSlider slider_SetNewCalibratedHeight;
-
+    // These Managers gather update data from the phones sensors
     LocationManager locationManager;
     SensorManager sensorManager;
     Sensor pressureSensor;
 
+    // The decimal format is used to display values on Views.
     DecimalFormat df;
 
-    @SuppressLint("MissingPermission")
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+    // Filemanager is responsible for reading and writing informatino to or from files.
+    CustomFileManager fileManager;
 
-        showPhoneStatePermissionGPS();
-
-        try {
-            OutputStreamWriter outputStreamWriter = new OutputStreamWriter(this.openFileOutput("GPSTracks.csv", Context.MODE_PRIVATE));
-            outputStreamWriter.write("");
-        } catch (FileNotFoundException e) {
-
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        this.GPS_Route.clear();
-        this.UTM_Route.clear();
-
-        height_offset = 0.0f;
-        calibrationActive = false;
-
-        df = new DecimalFormat("#.0000");
-
-
-        linearLayout_main_Content = (LinearLayout) findViewById(R.id.linearLayout_main_Content);
-        linearLayout_standard_content = (LinearLayout) findViewById(R.id.linearLayout_standard_content);
-        linearLayout_Calibration = (LinearLayout) findViewById(R.id.linearLayout_Calibration);
-        linearLayout_Settings = (LinearLayout) findViewById(R.id.linearLayout_Settings);
-        linearLayout_Route = (LinearLayout) findViewById(R.id.linearLayout_route);
-
-        imageView_Route = (ImageView) findViewById(R.id.imageView_route);
-
-        navigation_bottomNavigation = (BottomNavigationView)findViewById(R.id.bottom_navigation);
-        navigation_bottomNavigation.inflateMenu(R.menu.bottom_menu);
-        try {
-            button_info = navigation_bottomNavigation.findViewById(R.id.action_route);
-            button_info.setOnClickListener(this);
-            button_calibrate = navigation_bottomNavigation.findViewById(R.id.action_calibrate);
-            button_calibrate.setOnClickListener(this);
-            button_settings = navigation_bottomNavigation.findViewById(R.id.action_settings);
-            button_settings.setOnClickListener(this);
-        } catch (Exception e){
-//            Log.d("GPSReceiver", "Error setting navigation items up");
-//            Log.d("GPSReceiver", e.getMessage());
-        }
-
-        button_saveRouteToGPX = (Button) findViewById(R.id.button_saveRouteToGPS);
-        button_saveRouteToGPX.setOnClickListener(this);
-
-        button_resetCalibration = (Button) findViewById(R.id.resetCalibration);
-        button_resetCalibration.setOnClickListener(this);
-
-        textView_latitude = (TextView) findViewById(R.id.latitude);
-        textView_longitude = (TextView) findViewById(R.id.longitude);
-        textView_height = (TextView) findViewById(R.id.height);
-        textView_recalibrated_height = (TextView) findViewById(R.id.recalibrated_height);
-        textView_speed = (TextView) findViewById(R.id.speed);
-
-
-        loadPreferences();
-        setupManualHeightSlider();
-
-        getGPSData();
-        getHeightViaPressure();
-    }
-
+    /**
+     * Loads preferences on Resume
+     */
     @Override
     protected void onResume() {
         super.onResume();
         loadPreferences();
     }
-
+    /**
+     * Saves preferences on Pause
+     */
     @Override
     protected void onPause() {
         super.onPause();
         savePreferences();
     }
-
+    /**
+     * Saves preferences on Stop
+     */
     @Override
     protected void onStop() {
         super.onStop();
         savePreferences();
     }
-
+    /**
+     * Saves preferences on Destroy
+     */
     @Override
     protected void onDestroy() {
         super.onDestroy();
         savePreferences();
     }
 
+    /**
+     * Creates the Views and Models for this MainActivity
+     * @param savedInstanceState
+     */
+    @SuppressLint("MissingPermission")
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        height_offset = 0.0f;
+        calibrationActive = false;
+        df = new DecimalFormat("#.0000");
+
+        showPhoneStatePermissionGPS();
+        clearRouteInformation();
+        setupFileManager();
+        setupUIElements();
+
+        loadPreferences();
+        setupManualHeightSlider();
+
+        setupLocationManager();
+        setupPressureManager();
+    }
+
+    /**
+     * Sets up the FileManager for writing files and reading information from them.
+     */
+    private void setupFileManager(){
+        fileManager = new CustomFileManager(this);
+        fileManager.clearGPSFile();
+    }
+
+    /**
+     * Clears all Routing information that could be deprecated.
+     */
+    private void clearRouteInformation(){
+        this.GPS_Route.clear();
+        this.UTM_Route.clear();
+    }
+
+    /**
+     * Sets up the UI Elements of this Activity
+     */
+    private void setupUIElements(){
+        setupLayouts();
+        setupImageView();
+        setupBottomNavigation();
+        setupButtons();
+        setupTextViews();
+    }
+
+    /**
+     * Sets up the Layouts used in this Activity
+     */
+    private void setupLayouts(){
+        linearLayout_main_Content = (LinearLayout) findViewById(R.id.linearLayout_main_Content);
+        linearLayout_standard_content = (LinearLayout) findViewById(R.id.linearLayout_standard_content);
+        linearLayout_Calibration = (LinearLayout) findViewById(R.id.linearLayout_Calibration);
+        linearLayout_Settings = (LinearLayout) findViewById(R.id.linearLayout_Settings);
+        linearLayout_Route = (LinearLayout) findViewById(R.id.linearLayout_route);
+    }
+
+    /**
+     * Sets up the Bottom Navigation.
+     */
+    private void setupBottomNavigation(){
+        navigation_bottomNavigation = (BottomNavigationView)findViewById(R.id.bottom_navigation);
+        navigation_bottomNavigation.inflateMenu(R.menu.bottom_menu);
+    }
+
+    /**
+     * Sets up the ImageView which is used to draw a Canvas containing Routing locations.
+     */
+    private void setupImageView(){
+        imageView_Route = (ImageView) findViewById(R.id.imageView_route);
+    }
+
+    /**
+     * Sets up the behaviour of TextViews.
+     */
+    private void setupTextViews(){
+        textView_latitude = (TextView) findViewById(R.id.latitude);
+        textView_longitude = (TextView) findViewById(R.id.longitude);
+        textView_height = (TextView) findViewById(R.id.height);
+        textView_recalibrated_height = (TextView) findViewById(R.id.recalibrated_height);
+        textView_speed = (TextView) findViewById(R.id.speed);
+    }
+
+    /**
+     * Sets up the buttons in this Activity
+     */
+    private void setupButtons(){
+        button_saveRouteToGPX = (Button) findViewById(R.id.button_saveRouteToGPS);
+        button_saveRouteToGPX.setOnClickListener(this);
+
+        button_resetCalibration = (Button) findViewById(R.id.resetCalibration);
+        button_resetCalibration.setOnClickListener(this);
+
+        button_info = navigation_bottomNavigation.findViewById(R.id.action_route);
+        button_info.setOnClickListener(this);
+        button_calibrate = navigation_bottomNavigation.findViewById(R.id.action_calibrate);
+        button_calibrate.setOnClickListener(this);
+        button_settings = navigation_bottomNavigation.findViewById(R.id.action_settings);
+        button_settings.setOnClickListener(this);
+    }
+
+    /**
+     * Reloads all UI-Elements with updated values.
+     */
+    private void updateView(){
+        this.textView_height.setText(df.format(this.height) + "m");
+        this.textView_recalibrated_height.setText(df.format(this.height)+"m");
+        textView_longitude.setText("longitude: " + df.format(this.longitude));
+        textView_latitude.setText("latitude: " + df.format(this.latitude));
+        textView_speed.setText("Speed: " + df.format(this.speed));
+    }
+    /**
+     * Saves all preferences specified by the user to Android.SharedPreferences
+     */
     private void savePreferences(){
 //        Log.d("GPSReceiver", "Saving Data to File");
         SharedPreferences.Editor editor = getSharedPreferences(getString(R.string.preference_file_key), MODE_PRIVATE).edit();
@@ -189,60 +259,42 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         editor.apply();
     }
 
+    /**
+     * Appends and saves the current location to a File.
+     * @param location
+     */
     private void saveGPSInformationToFile(Location location){
-        try {
+        this.fileManager.appendGPSLocationToFile(location);
+    }
 
-            OutputStreamWriter outputStreamWriter = new OutputStreamWriter(this.openFileOutput("GPSTracks.csv", Context.MODE_APPEND));
-
-            outputStreamWriter.write(
-                    location.getLatitude() +
-                    "," + location.getLongitude() +
-                    "," + location.getSpeed() +
-                    ";");
-            outputStreamWriter.write(System.getProperty("line.separator"));
-            outputStreamWriter.close();
-        }
-        catch (IOException e) {
-            Log.d("GPSReceiver", "File write failed: " + e.toString());
+    /**
+     * Gathers stored GPSRoute information from file and adds it to its runtime GPS_Route
+     */
+    private void createGPSRouteFromFile() {
+        LinkedList<String> locations = fileManager.readGPSLocationsFromFile();
+        for (String location : locations){
+            this.GPS_Route.add(location);
         }
     }
 
-    private void createGPSRouteFromFile(Context context) {
-
-        try {
-            InputStream inputStream = context.openFileInput("GPSTracks.csv");
-
-            if ( inputStream != null ) {
-                InputStreamReader inputStreamReader = new InputStreamReader(inputStream);
-                BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
-                String receiveString = "";
-                StringBuilder stringBuilder = new StringBuilder();
-
-                while ( (receiveString = bufferedReader.readLine()) != null ) {
-                    this.GPS_Route.add(receiveString);
-                }
-
-                inputStream.close();
-            }
-        }
-        catch (FileNotFoundException e) {
-            Log.e("GPSReceiver", "File not found: " + e.toString());
-        } catch (IOException e) {
-            Log.e("GPSReceiver", "Can not read file: " + e.toString());
-        }
+    /**
+     * Exports the currently stored GPS information and transfers this to a GPX file.
+     */
+    private void exportGPSRouteToGPX() {
+        fileManager.saveRouteToGPX();
     }
 
+    /**
+     * Loads preferences stored as Android.SharedPreference
+     */
     private void loadPreferences(){
-//        Log.d("GPSReceiver", "Loading Data from File");
         SharedPreferences prefs = getSharedPreferences(getString(R.string.preference_file_key), MODE_PRIVATE);
 
-//        Log.d("GPSReceiver", "OLD_HeightOffset: " + this.height_offset);
         try{
             this.height_offset = prefs.getFloat("height_offset", 0.0f);
         } catch (Exception e) {
-//            Log.d("GPSReceiver", e.getMessage());
+            Log.d("GPSReceiver", e.getMessage());
         }
-//        Log.d("GPSReceiver", "NEW_HeightOffset: " + this.height_offset);
 
         if (this.height > 0.0f){
             this.height = this.height + this.height_offset;
@@ -250,6 +302,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    /**
+     * Sets up a Slider, which can be used to calibrate height information.
+     */
     private void setupManualHeightSlider() {
         slider_SetNewCalibratedHeight = findViewById(R.id.setCalibratedHeight);
         slider_SetNewCalibratedHeight.invalidate();
@@ -281,106 +336,83 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         });
     }
 
+    /**
+     * Checks for App permissions and logs result onto LogCat
+     * @param requestCode RequestCode to be checked
+     * @param permissions Not used in this case
+     * @param grantResults Not used in this case
+     */
     @Override
-    public void onRequestPermissionsResult(
-            int requestCode,
-            String permissions[],
-            int[] grantResults) {
+    public void onRequestPermissionsResult( int requestCode, String permissions[], int[] grantResults) {
         switch (requestCode) {
             case ACCESS_FINE_LOCATION:
                 if (grantResults.length > 0
                         && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-//                    Log.d("GPSReceiver", "Permission Granted!");
+                    Log.d("GPSReceiver", "Permission Granted!");
                 } else {
-//                    Log.d("GPSReceiver", "Permission Denied!");
+                    Log.d("GPSReceiver", "Permission Denied!");
                 }
         }
     }
 
+    /**
+     * Checks if additional Persmissions are needed for this Application to work.
+     * Output on LogCat
+     */
     private void showPhoneStatePermissionGPS() {
         int permissionCheck = ContextCompat.checkSelfPermission(
                 this, Manifest.permission.ACCESS_FINE_LOCATION);
         if (permissionCheck != PackageManager.PERMISSION_GRANTED) {
             if (ActivityCompat.shouldShowRequestPermissionRationale(this,
                     Manifest.permission.ACCESS_FINE_LOCATION)) {
-//                Log.d("GPSReceiver", "Permission rationale Needed");
+                Log.d("GPSReceiver", "Permission rationale Needed");
                 this.permissionsGranted = false;
             } else {
-//                Log.d("GPSReceiver", "Requesting permission for ACCESS_FINE_LOCATION");
+                Log.d("GPSReceiver", "Requesting permission for ACCESS_FINE_LOCATION");
                 ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
             }
         } else {
-//            Log.d("GPSReceiver", "Permission for GPS granted");
+            Log.d("GPSReceiver", "Permission for GPS granted");
         }
     }
 
-    private void saveRouteToGPX() {
-        String header = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?><gpx xmlns=\"http://www.topografix.com/GPX/1/1\" creator=\"MapSource 6.15.5\" version=\"1.1\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"  xsi:schemaLocation=\"http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd\"><trk>\n";
-        String name = "<name>" + "My Route" + "</name><trkseg>\n";
-
-        String segments = "";
-
-        this.createGPSRouteFromFile(this);
-
-        Iterator routeIterator = this.GPS_Route.iterator();
-        Log.d("GPSReceiver", "route Size: " + this.GPS_Route.size());
-        while (routeIterator.hasNext()){
-            String routeItem = (String) routeIterator.next();
-            String[] routeInfo = routeItem.split(",");
-            String longitude = routeInfo[0];
-            String latitude = routeInfo[1];
-            segments += "<trkpt lat='" + latitude + "' lon='" + longitude + "'></trkpt>";
-        }
-
-        String footer = "</trkseg></trk></gpx>";
-
-
-        try {
-            OutputStreamWriter outputStreamWriter = new OutputStreamWriter(this.openFileOutput("Route.gpx", Context.MODE_PRIVATE));
-            outputStreamWriter.append(header);
-            outputStreamWriter.append(name);
-            outputStreamWriter.append(segments);
-            outputStreamWriter.append(footer);
-            outputStreamWriter.flush();
-            outputStreamWriter.close();
-            Log.d("GPSReceiver", "Saved GPX");
-            Log.d("GPSReceiver", "File Location: " + this.getFilesDir().getAbsolutePath());
-        } catch (FileNotFoundException e) {
-
-            e.printStackTrace();
-        } catch (IOException e) {
-            Log.e("GPSReceiver", "Error Writting Path: " + e.getMessage());
-        }
-    }
-
-
+    /**
+     * Sets Up a LocationManager for location sensor updates.
+     */
     @SuppressLint("MissingPermission")
-    private void getGPSData() {
+    private void setupLocationManager() {
         locationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
         locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, this);
     }
 
+    /**
+     * Sets up the Pressure sensor Management.
+     */
     @SuppressLint("MissingPermission")
-    private void getHeightViaPressure() {
+    private void setupPressureManager() {
         sensorManager = (SensorManager) this.getSystemService(Context.SENSOR_SERVICE);
         pressureSensor = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE);
         sensorManager.registerListener(this, pressureSensor, 10000000);
     }
 
+    /**
+     * Manages different Onclick-Events for View Elements.
+     * @param v Clicked View
+     */
     @Override
     public void onClick(View v) {
         switch (v.getId()) {
             case R.id.button_saveRouteToGPS:
-                saveRouteToGPX();
+                exportGPSRouteToGPX();
                 break;
             case R.id.action_route:
-                navigationRouteClicked();
+                onClick_navigationRoute();
                 break;
             case R.id.action_calibrate:
-                navigationCalibrateClicked();
+                onClick_navigation_Calibrate();
                 break;
             case R.id.action_settings:
-                navigationSettingsClicked();
+                onClick_NavigationSettings();
                 break;
             case R.id.resetCalibration:
                 resetCalibration();
@@ -388,6 +420,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    /**
+     * Sets Calibrated Height and Height_offset to its default values.
+     */
     private void resetCalibration(){
         this.height_offset = 0.0f;
         this.height = 0.0f;
@@ -395,15 +430,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         updateView();
     }
 
-    private void updateView(){
-        this.textView_height.setText(df.format(this.height) + "m");
-        this.textView_recalibrated_height.setText(df.format(this.height)+"m");
-        textView_longitude.setText("longitude: " + df.format(this.longitude));
-        textView_latitude.setText("latitude: " + df.format(this.latitude));
-        textView_speed.setText("Speed: " + df.format(this.speed));
-    }
-
-    private void navigationCalibrateClicked(){
+    /**
+     * Displays the Calibration View and hides all other Layout-Views.
+     */
+    private void onClick_navigation_Calibrate(){
 //        Log.d("GPSReceiver", "Navigation Calibrate clicked");
         if(linearLayout_Calibration.getVisibility() == View.GONE){
             linearLayout_Calibration.setVisibility(View.VISIBLE);
@@ -415,8 +445,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             linearLayout_standard_content.setVisibility(View.VISIBLE);
         }
     }
-
-    private void navigationSettingsClicked(){
+    /**
+     * Displays the Navigation-Settings View and hides all other Layout-Views.
+     */
+    private void onClick_NavigationSettings(){
 //        Log.d("GPSReceiver", "Navigation Settings clicked");
         if(linearLayout_Settings.getVisibility() == View.GONE){
             linearLayout_Settings.setVisibility(View.VISIBLE);
@@ -428,9 +460,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             linearLayout_standard_content.setVisibility(View.VISIBLE);
         }
     }
-
-    private void navigationRouteClicked(){
-        this.createGPSRouteFromFile(this);
+    /**
+     * Displays the Navigation-Route View and hides all other Layout-Views.
+     */
+    private void onClick_navigationRoute(){
+        this.createGPSRouteFromFile();
         this.convertGPSRouteToUTMRoute();
 
         if(linearLayout_Route.getVisibility() == View.GONE){
@@ -438,7 +472,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             linearLayout_Settings.setVisibility(View.GONE);
             linearLayout_Calibration.setVisibility(View.GONE);
             linearLayout_standard_content.setVisibility(View.GONE);
-            drawCanvas();
+            drawUTMRouteOnCanvasToImageView();
 
         } else {
             linearLayout_Settings.setVisibility(View.GONE);
@@ -446,6 +480,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    /**
+     * Transfers GPS_Route Object into UTM_Route Object
+     */
     private void convertGPSRouteToUTMRoute(){
         Iterator routeIterator = this.GPS_Route.iterator();
         while (routeIterator.hasNext()){
@@ -460,6 +497,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    /**
+     * Returns the Maximum Eastern Value of all UTMRoute Locations
+     * @return
+     */
     private double getMaxEastFromUTMRoute(){
         Iterator it = UTM_Route.iterator();
 
@@ -474,7 +515,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         return maxValue;
     }
-
+    /**
+     * Returns the Minimum Eastern Value of all UTMRoute Locations
+     * @return
+     */
     private double getMinEastFromUTMRoute(){
         Iterator it = UTM_Route.iterator();
 
@@ -489,7 +533,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         return minValue;
     }
-
+    /**
+     * Returns the Maximum Northern Value of all UTMRoute Locations
+     * @return
+     */
     private double getMaxNorthFromUTMRoute(){
         Iterator it = UTM_Route.iterator();
         double maxValue = Double.MIN_VALUE;
@@ -501,7 +548,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
         return maxValue;
     }
-
+    /**
+     * Returns the Minimum Northern Value of all UTMRoute Locations
+     * @return
+     */
     private double getMinNorthFromUTMRoute(){
         Iterator it = UTM_Route.iterator();
         double minValue = Double.MAX_VALUE;
@@ -514,7 +564,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         return minValue;
     }
 
-    private void drawCanvas() {
+    /**
+     * Draws the current UTM_Route onto a Canvas, which is then applied to the Apps ImageView.
+     */
+    private void drawUTMRouteOnCanvasToImageView() {
         try{
             int bitmapHeight = linearLayout_main_Content.getHeight();
             int bitmapWidth = linearLayout_main_Content.getWidth();
@@ -607,24 +660,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-    // Onclick Events
-    @Override
-    public void onStatusChanged(String provider, int status, Bundle extras) {
-
-    }
-
-    // Onclick Events
-    @Override
-    public void onProviderEnabled(String provider) {
-
-    }
-
-    //onclick Events
-    @Override
-    public void onProviderDisabled(String provider) {
-
-    }
-
+    /**
+     * Manages location-changed events of the phones location sensor.
+     * If new Location is found, it is stored as runtime object but also directly stored to file.
+     * @param location Updated Location
+     */
     @Override
     public void onLocationChanged(Location location) {
         if (this.longitude != location.getLongitude() || this.latitude != location.getLatitude()){
@@ -639,6 +679,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    /**
+     * Manages pressure-Sensor events.
+     * Uses the current pressure value and calculates the height correspondendly.
+     * @param event
+     */
     @Override
     public void onSensorChanged(SensorEvent event) {
         if(this.calibrationActive == false) {
@@ -660,8 +705,16 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    // NOT IMPLEMENTED
     @Override
-    public void onAccuracyChanged(Sensor sensor, int accuracy) {
-//        Log.d("GPSReceiver", "PressureSensor Accuracy-Changed Event");
-    }
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+    // NOT IMPLEMENTED
+    @Override
+    public void onStatusChanged(String provider, int status, Bundle extras) {}
+    // NOT IMPLEMENTED
+    @Override
+    public void onProviderEnabled(String provider) {}
+    // NOT IMPLEMENTED
+    @Override
+    public void onProviderDisabled(String provider) {}
 }
