@@ -436,30 +436,24 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private void onClick_navigation_Calibrate(){
 //        Log.d("GPSReceiver", "Navigation Calibrate clicked");
         if(linearLayout_Calibration.getVisibility() == View.GONE){
-            linearLayout_Calibration.setVisibility(View.VISIBLE);
-            linearLayout_Settings.setVisibility(View.GONE);
-            linearLayout_Route.setVisibility(View.GONE);
-            linearLayout_standard_content.setVisibility(View.GONE);
+            display_linearLayout_Calibration();
         } else {
-            linearLayout_Calibration.setVisibility(View.GONE);
-            linearLayout_standard_content.setVisibility(View.VISIBLE);
+            display_linearLayout_Standard();
         }
     }
+
     /**
      * Displays the Navigation-Settings View and hides all other Layout-Views.
      */
     private void onClick_NavigationSettings(){
 //        Log.d("GPSReceiver", "Navigation Settings clicked");
         if(linearLayout_Settings.getVisibility() == View.GONE){
-            linearLayout_Settings.setVisibility(View.VISIBLE);
-            linearLayout_Calibration.setVisibility(View.GONE);
-            linearLayout_Route.setVisibility(View.GONE);
-            linearLayout_standard_content.setVisibility(View.GONE);
+            display_linearLayout_Settings();
         } else {
-            linearLayout_Settings.setVisibility(View.GONE);
-            linearLayout_standard_content.setVisibility(View.VISIBLE);
+            display_linearLayout_Standard();
         }
     }
+
     /**
      * Displays the Navigation-Route View and hides all other Layout-Views.
      */
@@ -467,17 +461,40 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         this.createGPSRouteFromFile();
         this.convertGPSRouteToUTMRoute();
 
-        if(linearLayout_Route.getVisibility() == View.GONE){
-            linearLayout_Route.setVisibility(View.VISIBLE);
-            linearLayout_Settings.setVisibility(View.GONE);
-            linearLayout_Calibration.setVisibility(View.GONE);
-            linearLayout_standard_content.setVisibility(View.GONE);
+        if(linearLayout_Route.getVisibility() == View.VISIBLE){
+            display_linearLayout_Standard();
+        }else {
+            display_linearLayout_Route();
             drawUTMRouteOnCanvasToImageView();
-
-        } else {
-            linearLayout_Settings.setVisibility(View.GONE);
-            linearLayout_standard_content.setVisibility(View.VISIBLE);
         }
+    }
+
+    private void display_linearLayout_Standard(){
+        linearLayout_Route.setVisibility(View.GONE);
+        linearLayout_Settings.setVisibility(View.GONE);
+        linearLayout_Calibration.setVisibility(View.GONE);
+        linearLayout_standard_content.setVisibility(View.VISIBLE);
+    }
+
+    private void display_linearLayout_Route(){
+        linearLayout_Route.setVisibility(View.VISIBLE);
+        linearLayout_Settings.setVisibility(View.GONE);
+        linearLayout_Calibration.setVisibility(View.GONE);
+        linearLayout_standard_content.setVisibility(View.GONE);
+    }
+
+    private void display_linearLayout_Settings(){
+        linearLayout_Route.setVisibility(View.GONE);
+        linearLayout_Settings.setVisibility(View.VISIBLE);
+        linearLayout_Calibration.setVisibility(View.GONE);
+        linearLayout_standard_content.setVisibility(View.GONE);
+    }
+
+    private void display_linearLayout_Calibration(){
+        linearLayout_Route.setVisibility(View.GONE);
+        linearLayout_Settings.setVisibility(View.GONE);
+        linearLayout_Calibration.setVisibility(View.VISIBLE);
+        linearLayout_standard_content.setVisibility(View.GONE);
     }
 
     /**
@@ -568,17 +585,30 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
      * Draws the current UTM_Route onto a Canvas, which is then applied to the Apps ImageView.
      */
     private void drawUTMRouteOnCanvasToImageView() {
+        imageView_Route.invalidate();
+
         try{
-            int bitmapHeight = linearLayout_main_Content.getHeight();
-            int bitmapWidth = linearLayout_main_Content.getWidth();
-            int quarterWidth = bitmapWidth / 4;
-            Bitmap bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888);
+            int calculatedHeight = linearLayout_main_Content.getHeight();
+            int calculatedWidth = linearLayout_main_Content.getWidth();
+
+            int quarterWidth = calculatedWidth / 4;
+            Bitmap bitmap = Bitmap.createBitmap(calculatedWidth, calculatedHeight, Bitmap.Config.ARGB_8888);
 
             Canvas canvas = new Canvas(bitmap);
             Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-            paint.setColor(Color.BLUE);
+            paint.setColor(Color.GRAY);
+//            canvas.drawLine(0, 0, 0, calculatedHeight, paint);
+//            canvas.drawLine(calculatedWidth, 0, calculatedWidth, calculatedHeight, paint);
+            canvas.drawLine(quarterWidth*2, 0, quarterWidth*2, calculatedHeight, paint);
 
+            if(calculatedHeight > calculatedWidth){
+                calculatedHeight = calculatedWidth;
+            } else {
+                calculatedWidth = calculatedHeight;
+            }
+
+            paint.setColor(Color.BLUE);
             double maxEastUTMValue = getMaxEastFromUTMRoute();
             double minEastUTMValue = getMinEastFromUTMRoute();
 
@@ -600,11 +630,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 double xPos1;
                 double yPos1;
 
-                xPos1 = ( (maxEastUTMValue-minEastUTMValue) / (routeEntry.getEasting()*bitmapWidth) );
-                yPos1 = ( (maxNorthUTMValue-minNorthUTMValue) / (routeEntry.getNorthing()*bitmapHeight) );
+                xPos1 = ( (maxEastUTMValue-minEastUTMValue) / (routeEntry.getEasting()*calculatedWidth) );
+                yPos1 = ( (maxNorthUTMValue-minNorthUTMValue) / (routeEntry.getNorthing()*calculatedHeight) );
 
-                float xPos1Canvas = (float) xPos1 * bitmapWidth;
-                float yPos1Canvas = (float) yPos1 * bitmapHeight;
+                float xPos1Canvas = (float) xPos1 * calculatedWidth;
+                float yPos1Canvas = (float) yPos1 * calculatedHeight;
+                yPos1Canvas = calculatedHeight - yPos1Canvas;
 
                 canvas.drawLine(xPos1Canvas, yPos1Canvas, xPos1Canvas, yPos1Canvas, paint);
                 canvas.drawText((latZone+Integer.toString(longZone)), 10, 25, paint);
@@ -627,17 +658,19 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     xPos2 = ( ( (routeEntry.getEasting() - minEastUTMValue) ) / (maxEastUTMValue-minEastUTMValue) );
                     yPos2 = ( ( (routeEntry.getNorthing() - minNorthUTMValue) ) / (maxNorthUTMValue-minNorthUTMValue) );
 
-                    float xPos1Canvas = (float) xPos1 * bitmapWidth;
-                    float yPos1Canvas = (float) yPos1 * bitmapHeight;
+                    float xPos1Canvas = (float) xPos1 * calculatedWidth;
+                    float yPos1Canvas = (float) yPos1 * calculatedHeight;
+                    yPos1Canvas = calculatedHeight - yPos1Canvas;
 
-                    float xPos2Canvas = (float) xPos2 * bitmapWidth;
-                    float yPos2Canvas = (float) yPos2 * bitmapHeight;
+                    float xPos2Canvas = (float) xPos2 * calculatedWidth;
+                    float yPos2Canvas = (float) yPos2 * calculatedHeight;
+                    yPos2Canvas = calculatedHeight - yPos2Canvas;
 
-                    Log.d("GPSReceiver", "xpos1: " + xPos1Canvas);
-                    Log.d("GPSReceiver", "Northing: " + routeEntry.getNorthing());
-                    Log.d("GPSReceiver", "ypos1: " + yPos1Canvas);
-                    Log.d("GPSReceiver", "xpos2: " + xPos2Canvas);
-                    Log.d("GPSReceiver", "ypos2: " + yPos2Canvas);
+//                    Log.d("GPSReceiver", "xpos1: " + xPos1Canvas);
+//                    Log.d("GPSReceiver", "Northing: " + routeEntry.getNorthing());
+//                    Log.d("GPSReceiver", "ypos1: " + yPos1Canvas);
+//                    Log.d("GPSReceiver", "xpos2: " + xPos2Canvas);
+//                    Log.d("GPSReceiver", "ypos2: " + yPos2Canvas);
 
                     canvas.drawLine(xPos1Canvas, yPos1Canvas, xPos2Canvas, yPos2Canvas, paint);
 
@@ -646,11 +679,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 }
             }
 
-            paint.setColor(Color.RED);
-//            canvas.drawLine(quarterWidth, 0, quarterWidth, bitmapHeight, paint);
-            canvas.drawLine(quarterWidth*2, 0, quarterWidth*2, bitmapHeight, paint);
-            paint.setTextSize(50);
-            canvas.drawText((latZone+Integer.toString(longZone)), quarterWidth*2, 0, paint);
 //            canvas.drawLine(quarterWidth*3, 0, quarterWidth*3, bitmapHeight, paint);
 
             imageView_Route.draw(canvas);

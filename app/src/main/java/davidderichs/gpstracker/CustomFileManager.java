@@ -52,8 +52,8 @@ public class CustomFileManager {
             OutputStreamWriter outputStreamWriter = new OutputStreamWriter(context.openFileOutput("GPSTracks.csv", Context.MODE_APPEND));
 
             outputStreamWriter.write(
-                    location.getLatitude() +
-                            "," + location.getLongitude() +
+                    location.getLongitude() +
+                            "," + location.getLatitude() +
                             "," + location.getSpeed() +
                             ";");
             outputStreamWriter.write(System.getProperty("line.separator"));

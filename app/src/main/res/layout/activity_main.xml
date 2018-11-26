@@ -10,6 +10,7 @@
         android:id="@+id/linearLayout_main_Content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:layout_marginBottom="10dp"
         android:orientation="vertical"
         android:padding="0px">
 
@@ -93,7 +94,7 @@
                 android:background="@android:color/holo_green_light"
                 android:minWidth="350px"
                 android:shadowColor="@color/white"
-                android:text="Save Route to GPX File"
+                android:text="@string/saveToGPX"
                 android:textColor="@color/white"
                 android:textSize="24sp" />
         </LinearLayout>
